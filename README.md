@@ -1,5 +1,9 @@
 # Hub Automation Framework: Enterprise Unified UI Testing Solution
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.ertasbunyamin/hub-spring-boot-starter.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:io.github.ertasbunyamin%20AND%20a:hub-spring-boot-starter)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Java](https://img.shields.io/badge/Java-17%2B-orange.svg)](https://openjdk.java.net/)
+
 [English](#en) | [Türkçe](#tr)
 
 ---
@@ -29,15 +33,25 @@ Hub Framework is built on the principle of "Separation of Concerns," offering th
 | **`hub-provider-hybrid`** | Dual-driver provider connecting Selenium + Playwright to the same session via CDP. |
 | **`hub-spring-boot-starter`** | Autoconfiguration, bean management, and JUnit 5 extensions. |
 
-### Integration Standards
+### Installation
 
-#### Maven Configuration
+#### Maven
 ```xml
 <dependency>
-    <groupId>com.dod.hub</groupId>
+    <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-spring-boot-starter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0</version>
 </dependency>
+```
+
+#### Gradle (Kotlin DSL)
+```kotlin
+implementation("io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0")
+```
+
+#### Gradle (Groovy)
+```groovy
+implementation 'io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0'
 ```
 
 #### Centralized Configuration
@@ -315,15 +329,25 @@ Hub Framework, "Separation of Concerns" (Sorumlulukların Ayrılması) prensibin
 | **`hub-provider-hybrid`** | Selenium + Playwright'ı CDP üzerinden aynı oturuma bağlayan çift motor sağlayıcı. |
 | **`hub-spring-boot-starter`** | Otomatik konfigürasyon, bean yönetimi ve JUnit 5 uzantıları. |
 
-### Entegrasyon Standartları
+### Kurulum
 
-#### Maven Yapılandırması
+#### Maven
 ```xml
 <dependency>
-    <groupId>com.dod.hub</groupId>
+    <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-spring-boot-starter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0</version>
 </dependency>
+```
+
+#### Gradle (Kotlin DSL)
+```kotlin
+implementation("io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0")
+```
+
+#### Gradle (Groovy)
+```groovy
+implementation 'io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0'
 ```
 
 #### Merkezi Konfigürasyon Yönetimi

@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.ertasbunyamin</groupId>
         <artifactId>hub-parent</artifactId>
-        <version>0.1.1-SNAPSHOT</version>
+        <version>0.2.0</version>
     </parent>
 
     <artifactId>hub-spring-boot-starter</artifactId>
@@ -61,7 +61,7 @@
         <dependency>
              <groupId>io.github.ertasbunyamin</groupId>
              <artifactId>hub-provider-selenium</artifactId>
-             <version>0.1.1-SNAPSHOT</version>
+             <version>0.2.0</version>
              <scope>test</scope>
         </dependency>
         <dependency>

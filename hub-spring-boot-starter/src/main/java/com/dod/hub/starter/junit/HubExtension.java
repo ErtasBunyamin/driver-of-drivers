@@ -7,7 +7,10 @@ import com.dod.hub.core.config.HubConfig;
 import com.dod.hub.core.config.HubProviderType;
 import com.dod.hub.core.config.HubBrowserType;
 import com.dod.hub.core.config.HubArtifactPolicy;
+import com.dod.hub.core.telemetry.HubTestEvent;
+import com.dod.hub.core.telemetry.HubTestResult;
 import com.dod.hub.starter.artifacts.ArtifactManager;
+import com.dod.hub.starter.telemetry.TelemetryListener;
 import org.junit.jupiter.api.extension.*;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
@@ -18,6 +21,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -42,10 +46,12 @@ public class HubExtension implements BeforeEachCallback, AfterEachCallback, Test
     private static class DriverState {
         HubWebDriver driver;
         HubConfig config;
+        long startTime;
 
         DriverState(HubWebDriver driver, HubConfig config) {
             this.driver = driver;
             this.config = config;
+            this.startTime = System.currentTimeMillis();
         }
     }
 
@@ -145,12 +151,39 @@ public class HubExtension implements BeforeEachCallback, AfterEachCallback, Test
 
     @Override
     public void testSuccessful(ExtensionContext context) {
+        emitTelemetry(context, HubTestEvent.TEST_PASSED, null);
         handleArtifacts(context, null, true);
     }
 
     @Override
     public void testFailed(ExtensionContext context, Throwable cause) {
+        emitTelemetry(context, HubTestEvent.TEST_FAILED, cause);
         handleArtifacts(context, cause, false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void emitTelemetry(ExtensionContext context, HubTestEvent event, Throwable cause) {
+        List<DriverState> drivers = (List<DriverState>) getStore(context).get("drivers");
+        if (drivers == null || drivers.isEmpty())
+            return;
+
+        ApplicationContext springContext = SpringExtension.getApplicationContext(context);
+        try {
+            TelemetryListener listener = springContext.getBean(TelemetryListener.class);
+            DriverState state = drivers.get(0);
+            long duration = System.currentTimeMillis() - state.startTime;
+
+            HubTestResult result = new HubTestResult(
+                    context.getRequiredTestClass().getSimpleName(),
+                    context.getRequiredTestMethod().getName(),
+                    event,
+                    duration,
+                    cause != null ? cause.getMessage() : null,
+                    Collections.emptyList());
+            listener.onEvent(event, result);
+        } catch (Exception e) {
+            log.trace("Telemetry listener not available: {}", e.getMessage());
+        }
     }
 
     @SuppressWarnings("unchecked")

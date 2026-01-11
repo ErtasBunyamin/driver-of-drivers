@@ -79,4 +79,14 @@ public class HubProperties {
          */
         private HubArtifactPolicy policy = HubArtifactPolicy.ON_FAILURE;
     }
+
+    /**
+     * Telemetry configuration.
+     */
+    private Telemetry telemetry = new Telemetry();
+
+    @Data
+    public static class Telemetry {
+        private boolean enabled = true;
+    }
 }

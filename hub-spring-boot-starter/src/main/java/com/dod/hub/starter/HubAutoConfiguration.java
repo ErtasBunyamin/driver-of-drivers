@@ -7,6 +7,8 @@ import com.dod.hub.starter.context.HubContext;
 import com.dod.hub.starter.pagefactory.HubSpringFactory;
 import com.dod.hub.starter.artifacts.ArtifactManager;
 import com.dod.hub.starter.artifacts.LocalFileSystemArtifactManager;
+import com.dod.hub.starter.telemetry.TelemetryListener;
+import com.dod.hub.starter.telemetry.JsonFileTelemetryListener;
 
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -15,6 +17,7 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.context.annotation.ScopedProxyMode;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
@@ -63,6 +66,16 @@ public class HubAutoConfiguration implements DisposableBean {
     @ConditionalOnMissingBean
     public ArtifactManager artifactManager(HubConfig config) {
         return new LocalFileSystemArtifactManager(config);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "hub.telemetry.enabled", havingValue = "true", matchIfMissing = true)
+    public TelemetryListener telemetryListener(HubProperties properties) {
+        String basePath = properties.getArtifacts() != null
+                ? properties.getArtifacts().getPath()
+                : "target/hub-artifacts";
+        return new JsonFileTelemetryListener(basePath);
     }
 
     /**

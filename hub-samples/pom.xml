@@ -24,6 +24,10 @@
             <groupId>com.dod.hub</groupId>
             <artifactId>hub-provider-playwright</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.dod.hub</groupId>
+            <artifactId>hub-provider-hybrid</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.dod.hub</groupId>

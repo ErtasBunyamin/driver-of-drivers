@@ -26,6 +26,7 @@ Hub Framework is built on the principle of "Separation of Concerns," offering th
 | **`hub-webdriver-facade`** | Unified cross-platform API definitions (WebDriver, WebElement, By). |
 | **`hub-provider-selenium`** | Adapter implementation for the Selenium WebDriver engine. |
 | **`hub-provider-playwright`** | Adapter implementation for the Microsoft Playwright engine. |
+| **`hub-provider-hybrid`** | Dual-driver provider connecting Selenium + Playwright to the same session via CDP. |
 | **`hub-spring-boot-starter`** | Autoconfiguration, bean management, and JUnit 5 extensions. |
 
 ### Integration Standards
@@ -128,6 +129,110 @@ Hub supports hybrid cloud and on-premise Selenium Grid setups, as well as Playwr
 
 ---
 
+### HybridProvider: Dual-Engine Power 🔀
+
+Hub Framework introduces a revolutionary **HybridProvider** that connects both Selenium and Playwright to the **same browser session** via Chrome DevTools Protocol (CDP). This unique capability allows you to leverage the best features of both frameworks simultaneously.
+
+#### Architecture
+```
+┌─────────────────────────────────────────────────────┐
+│                  HybridProvider                     │
+├─────────────────────────────────────────────────────┤
+│  Browser Process (Chrome/Edge)                      │
+│  └── CDP Endpoint: localhost:9222                   │
+│       ├── Selenium WebDriver ──┐                    │
+│       └── Playwright Page ─────┼──► HubWebDriver    │
+│                                │                    │
+│  PlaywrightCapabilities ───────┘                    │
+│  (Auto-wait, Network Mock, Tracing, Dialogs)        │
+└─────────────────────────────────────────────────────┘
+```
+
+#### Configuration
+```yaml
+hub:
+  provider: hybrid  # Enables dual-driver mode
+  browser: chrome
+  headless: false
+  provider-options:
+    hybrid.cdp.port: 9222
+    hybrid.playwright.autowait: true
+```
+
+#### Strategy Routing
+
+| Operation | Engine | Rationale |
+| :--- | :--- | :--- |
+| `find` (wait phase) | **Playwright** | Auto-wait for element visibility |
+| `find` (element ref) | Selenium | WebElement compatibility |
+| `click`, `type` | Selenium | Mature, stable API |
+| `screenshot` | **Playwright** | Full-page, high quality |
+| `network mock` | **Playwright** | Native first-class support |
+
+#### PlaywrightCapabilities API
+
+Access advanced Playwright features through the `HybridSession`:
+
+```java
+@HubTest
+@SpringBootTest
+public class HybridTest {
+    @HubDriver(provider = HubProviderType.HYBRID)
+    private HubWebDriver driver;
+
+    @Test
+    void testWithPlaywrightPowers() {
+        HybridSession session = (HybridSession) driver.getSession();
+        PlaywrightCapabilities pw = session.playwright();
+
+        // Network Interception
+        pw.mockJsonRequest("**/api/users", "[{\"id\": 1}]");
+        pw.blockRequests("**/analytics/**");
+
+        // Dialog Handling
+        pw.autoAcceptDialogs();
+
+        // Console Logging
+        pw.onConsoleMessage(msg -> System.out.println("Browser: " + msg));
+
+        // Tracing (for debugging)
+        pw.startTracing("my-test");
+
+        driver.get("https://example.com");
+        driver.findElement(By.id("btn")).click(); // Auto-wait enabled!
+
+        // Full-page screenshot
+        byte[] screenshot = pw.fullPageScreenshot();
+
+        pw.stopTracing(Path.of("trace.zip"));
+    }
+}
+```
+
+#### Available Capabilities
+
+| Method | Description |
+| :--- | :--- |
+| `waitForSelector(selector, timeout)` | Wait for element visibility |
+| `waitForLoadState(state)` | Wait for `load`, `domcontentloaded`, `networkidle` |
+| `waitForURL(pattern)` | Wait for URL navigation |
+| `mockJsonRequest(pattern, json)` | Mock API with JSON response |
+| `blockRequests(pattern)` | Block matching requests |
+| `interceptRequests(pattern, handler)` | Custom request interception |
+| `startTracing(name)` / `stopTracing(path)` | Record debug traces |
+| `autoAcceptDialogs()` | Auto-accept alerts/confirms |
+| `autoDismissDialogs()` | Auto-dismiss dialogs |
+| `onConsoleMessage(handler)` | Capture browser console |
+| `onPageError(handler)` | Capture page errors |
+| `fullPageScreenshot()` | High-quality full-page capture |
+| `elementScreenshot(selector)` | Screenshot specific element |
+| `setGeolocation(lat, lng)` | Emulate location |
+| `evaluate(js)` | Execute JavaScript |
+
+> **Note:** HybridProvider only supports Chromium-based browsers (Chrome, Edge).
+
+---
+
 <h2 id="tr">Türkçe Versiyon</h2>
 
 Hub, karmaşık test senaryolarını yönetmek üzere tasarlanmış, **Selenium** ve **Playwright** altyapılarını tek bir soyutlama katmanı (Abstraction Layer) altında birleştiren kurumsal düzeyde bir test otomasyonu çözümüdür. Yazılım geliştirme yaşam döngüsünde (SDLC) test sürdürülebilirliğini artırmak ve teknoloji bağımlılığını (Vendor Lock-in) minimize etmek amacıyla geliştirilmiştir.
@@ -150,6 +255,7 @@ Hub Framework, "Separation of Concerns" (Sorumlulukların Ayrılması) prensibin
 | **`hub-webdriver-facade`** | Platformlar arası ortak API tanımları (WebDriver, WebElement, By). |
 | **`hub-provider-selenium`** | Selenium WebDriver motoru için adaptör uygulaması. |
 | **`hub-provider-playwright`** | Microsoft Playwright motoru için adaptör uygulaması. |
+| **`hub-provider-hybrid`** | Selenium + Playwright'ı CDP üzerinden aynı oturuma bağlayan çift motor sağlayıcı. |
 | **`hub-spring-boot-starter`** | Otomatik konfigürasyon, bean yönetimi ve JUnit 5 uzantıları. |
 
 ### Entegrasyon Standartları
@@ -250,6 +356,110 @@ public class LoginPage {
 
 ### Uzaktan Yürütme ve Altyapı Desteği
 Hub, hibrit bulut ve şirket içi Selenium Grid yapılarının yanı sıra Playwright Connect senaryolarını da destekler. Özelleştirilmiş tarayıcı yetenekleri (Capabilities) hem programatik hem de deklaratif olarak konfigüre edilebilir.
+
+---
+
+### HybridProvider: Çift Motor Gücü 🔀
+
+Hub Framework, Chrome DevTools Protocol (CDP) üzerinden Selenium ve Playwright'ı **aynı tarayıcı oturumuna** bağlayan devrimci bir **HybridProvider** sunar. Bu benzersiz yetenek, her iki framework'ün en iyi özelliklerinden aynı anda yararlanmanızı sağlar.
+
+#### Mimari
+```
+┌─────────────────────────────────────────────────────┐
+│                  HybridProvider                      │
+├─────────────────────────────────────────────────────┤
+│  Tarayıcı İşlemi (Chrome/Edge)                      │
+│  └── CDP Endpoint: localhost:9222                   │
+│       ├── Selenium WebDriver ──┐                    │
+│       └── Playwright Page ─────┼──► HubWebDriver    │
+│                                │                    │
+│  PlaywrightCapabilities ───────┘                    │
+│  (Otomatik Bekleme, Network Mock, İzleme, Diyalog)  │
+└─────────────────────────────────────────────────────┘
+```
+
+#### Konfigürasyon
+```yaml
+hub:
+  provider: hybrid  # Çift motor modunu etkinleştirir
+  browser: chrome
+  headless: false
+  provider-options:
+    hybrid.cdp.port: 9222
+    hybrid.playwright.autowait: true
+```
+
+#### Strateji Yönlendirmesi
+
+| İşlem | Motor | Gerekçe |
+| :--- | :--- | :--- |
+| `find` (bekleme aşaması) | **Playwright** | Element görünürlüğü için otomatik bekleme |
+| `find` (element referansı) | Selenium | WebElement uyumluluğu |
+| `click`, `type` | Selenium | Olgun, stabil API |
+| `screenshot` | **Playwright** | Tam sayfa, yüksek kalite |
+| `network mock` | **Playwright** | Yerel birinci sınıf destek |
+
+#### PlaywrightCapabilities API
+
+`HybridSession` üzerinden gelişmiş Playwright özelliklerine erişim:
+
+```java
+@HubTest
+@SpringBootTest
+public class HybridTest {
+    @HubDriver(provider = HubProviderType.HYBRID)
+    private HubWebDriver driver;
+
+    @Test
+    void testWithPlaywrightPowers() {
+        HybridSession session = (HybridSession) driver.getSession();
+        PlaywrightCapabilities pw = session.playwright();
+
+        // Network Yakalama
+        pw.mockJsonRequest("**/api/users", "[{\"id\": 1}]");
+        pw.blockRequests("**/analytics/**");
+
+        // Diyalog Yönetimi
+        pw.autoAcceptDialogs();
+
+        // Konsol Loglama
+        pw.onConsoleMessage(msg -> System.out.println("Tarayıcı: " + msg));
+
+        // İzleme (debugging için)
+        pw.startTracing("benim-testim");
+
+        driver.get("https://example.com");
+        driver.findElement(By.id("btn")).click(); // Otomatik bekleme aktif!
+
+        // Tam sayfa ekran görüntüsü
+        byte[] screenshot = pw.fullPageScreenshot();
+
+        pw.stopTracing(Path.of("trace.zip"));
+    }
+}
+```
+
+#### Mevcut Yetenekler
+
+| Metod | Açıklama |
+| :--- | :--- |
+| `waitForSelector(selector, timeout)` | Element görünürlüğünü bekle |
+| `waitForLoadState(state)` | `load`, `domcontentloaded`, `networkidle` bekle |
+| `waitForURL(pattern)` | URL navigasyonunu bekle |
+| `mockJsonRequest(pattern, json)` | API'yi JSON yanıtıyla mockla |
+| `blockRequests(pattern)` | Eşleşen istekleri blokla |
+| `interceptRequests(pattern, handler)` | Özel istek yakalama |
+| `startTracing(name)` / `stopTracing(path)` | Debug izleri kaydet |
+| `autoAcceptDialogs()` | Alert/confirm'leri otomatik kabul et |
+| `autoDismissDialogs()` | Diyalogları otomatik kapat |
+| `onConsoleMessage(handler)` | Tarayıcı konsolunu yakala |
+| `onPageError(handler)` | Sayfa hatalarını yakala |
+| `fullPageScreenshot()` | Yüksek kaliteli tam sayfa görüntüsü |
+| `elementScreenshot(selector)` | Belirli elementi görüntüle |
+| `setGeolocation(lat, lng)` | Konum emülasyonu |
+| `evaluate(js)` | JavaScript çalıştır |
+
+> **Not:** HybridProvider yalnızca Chromium tabanlı tarayıcıları destekler (Chrome, Edge).
 
 ---
 © 2026 **DOD Framework**. All rights reserved.

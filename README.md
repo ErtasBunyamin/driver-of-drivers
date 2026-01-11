@@ -130,7 +130,7 @@ public class LoginPage {
 
 ### Advanced Features & Performance
 
-#### Artifact Management 📸
+#### Artifact Management
 Hub provides an automated artifact collection system integrated with the JUnit 5 lifecycle.
 
 | Policy | Description |
@@ -149,7 +149,32 @@ public ArtifactManager s3Manager() {
 }
 ```
 
-#### Performance & Scaling ⚡
+#### Telemetry Emitter
+Hub emits structured test execution events for monitoring, reporting, and CI/CD integration.
+
+```yaml
+hub:
+  telemetry:
+    enabled: true  # Default: true
+```
+
+**Output:** A `hub-telemetry.json` file is created in the artifacts directory containing:
+
+```json
+[
+  {
+    "event": "TEST_PASSED",
+    "timestamp": "2026-01-12T00:00:00Z",
+    "testClass": "LoginTest",
+    "testMethod": "shouldLoginSuccessfully",
+    "durationMs": 1250
+  }
+]
+```
+
+**Custom Listeners:** Implement `TelemetryListener` for custom integrations (e.g., Datadog, Prometheus).
+
+#### Performance & Scaling
 Designed for high-concurrency environments like CI/CD pipelines.
 
 *   **Blocking Driver Pool**: Prevents resource exhaustion by blocking test threads until a driver becomes available.
@@ -392,7 +417,7 @@ public class LoginPage {
 
 ### Gelişmiş Özellikler ve Performans
 
-#### Artifact ve Ekran Görüntüsü Yönetimi 📸
+#### Artifact ve Ekran Görüntüsü Yönetimi
 Hub, JUnit 5 yaşam döngüsüne entegre bir otomatik artifact toplama sistemi sunar.
 
 | Politika | Açıklama |
@@ -411,7 +436,32 @@ public ArtifactManager s3Manager() {
 }
 ```
 
-#### Performans ve Ölçeklendirme ⚡
+#### Telemetri Yayıncısı (Telemetry Emitter) 
+Hub, izleme, raporlama ve CI/CD entegrasyonu için yapılandırılmış test yürütme olayları yayınlar.
+
+```yaml
+hub:
+  telemetry:
+    enabled: true  # Varsayılan: true
+```
+
+**Çıktı:** Artifact dizininde aşağıdaki içeriğe sahip `hub-telemetry.json` dosyası oluşturulur:
+
+```json
+[
+  {
+    "event": "TEST_PASSED",
+    "timestamp": "2026-01-12T00:00:00Z",
+    "testClass": "LoginTest",
+    "testMethod": "shouldLoginSuccessfully",
+    "durationMs": 1250
+  }
+]
+```
+
+**Özel Dinleyiciler:** Özel entegrasyonlar için `TelemetryListener` arayüzünü uygulayın (ör. Datadog, Prometheus).
+
+#### Performans ve Ölçeklendirme
 CI/CD süreçleri gibi yüksek eşzamanlılık gerektiren ortamlar için optimize edilmiştir.
 
 *   **Bloklayan Sürücü Havuzu (Blocking Pool)**: Kaynak tükenmesini önlemek için, boşta sürücü kalmadığında test thread'lerini güvenli bir şekilde bekletir.

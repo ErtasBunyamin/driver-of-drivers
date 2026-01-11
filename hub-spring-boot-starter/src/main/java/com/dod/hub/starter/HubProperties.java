@@ -44,4 +44,22 @@ public class HubProperties {
      * Additional provider-specific options.
      */
     private Map<String, Object> providerOptions = new HashMap<>();
+
+    /**
+     * Performance tuning configurations.
+     */
+    private Performance performance = new Performance();
+
+    @Data
+    public static class Performance {
+        private boolean lazyInit = false;
+        private Pooling pooling = new Pooling();
+
+        @Data
+        public static class Pooling {
+            private boolean enabled = false;
+            private int minIdle = 0;
+            private int maxActive = 5;
+        }
+    }
 }

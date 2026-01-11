@@ -32,27 +32,35 @@ public class HubExtension implements BeforeEachCallback, AfterEachCallback {
 
     private static final ExtensionContext.Namespace NAMESPACE = ExtensionContext.Namespace.create(HubExtension.class);
 
+    private static class DriverState {
+        HubWebDriver driver;
+        HubConfig config;
+
+        DriverState(HubWebDriver driver, HubConfig config) {
+            this.driver = driver;
+            this.config = config;
+        }
+    }
+
     @Override
     public void beforeEach(ExtensionContext context) throws Exception {
         ApplicationContext springContext = SpringExtension.getApplicationContext(context);
         HubDriverFactory factory = springContext.getBean(HubDriverFactory.class);
         Object testInstance = context.getRequiredTestInstance();
 
-        List<HubWebDriver> createdDrivers = new ArrayList<>();
+        List<DriverState> createdDrivers = new ArrayList<>();
 
-        // Inject into test instance fields
         for (Field field : testInstance.getClass().getDeclaredFields()) {
             if (field.isAnnotationPresent(HubDriver.class)) {
                 HubDriver annotation = field.getAnnotation(HubDriver.class);
                 HubConfig config = resolveConfig(factory.getDefaultConfig(), annotation);
 
                 HubWebDriver driver = factory.create(config);
-                createdDrivers.add(driver);
+                createdDrivers.add(new DriverState(driver, config));
 
                 field.setAccessible(true);
                 field.set(testInstance, driver);
 
-                // Set ACTIVE driver (last one wins)
                 HubContext.set(driver);
             }
         }
@@ -61,8 +69,16 @@ public class HubExtension implements BeforeEachCallback, AfterEachCallback {
         getStore(context).put("drivers", createdDrivers);
     }
 
+    /**
+     * Resolves the final configuration for a driver.
+     * Merges global settings from application.properties with test-specific
+     * overrides
+     * from the {@link HubDriver} annotation.
+     * <p>
+     * Also propagates performance settings (pooling, lazy initialization) from the
+     * global config.
+     */
     private HubConfig resolveConfig(HubConfig global, HubDriver annotation) {
-        // Start with a clone of global defaults
         HubConfig config = new HubConfig();
         config.setProvider(global.getProvider());
         config.setBrowser(global.getBrowser());
@@ -70,12 +86,15 @@ public class HubExtension implements BeforeEachCallback, AfterEachCallback {
         config.setImplicitWaitMs(global.getImplicitWaitMs());
         config.setPageLoadTimeoutMs(global.getPageLoadTimeoutMs());
         config.setGridUrl(global.getGridUrl());
-        // Copy existing options
+        config.setPoolingEnabled(global.isPoolingEnabled());
+        config.setPoolMinIdle(global.getPoolMinIdle());
+        config.setPoolMaxActive(global.getPoolMaxActive());
+        config.setLazyInit(global.isLazyInit());
+
         if (global.getProviderOptions() != null) {
             config.setProviderOptions(new java.util.HashMap<>(global.getProviderOptions()));
         }
 
-        // Apply Overrides
         if (annotation.provider() != HubProviderType.DEFAULT) {
             config.setProvider(annotation.provider());
         }
@@ -86,7 +105,6 @@ public class HubExtension implements BeforeEachCallback, AfterEachCallback {
             config.setGridUrl(annotation.gridUrl());
         }
 
-        // Parse Options (key=value)
         for (String opt : annotation.options()) {
             String[] parts = opt.split("=", 2);
             if (parts.length == 2) {
@@ -99,11 +117,18 @@ public class HubExtension implements BeforeEachCallback, AfterEachCallback {
     @Override
     @SuppressWarnings("unchecked")
     public void afterEach(ExtensionContext context) throws Exception {
-        List<HubWebDriver> drivers = (List<HubWebDriver>) getStore(context).get("drivers");
+        List<DriverState> drivers = (List<DriverState>) getStore(context).get("drivers");
         if (drivers != null) {
-            for (HubWebDriver driver : drivers) {
-                if (driver != null) {
-                    driver.quit();
+            for (DriverState state : drivers) {
+                if (state.driver != null) {
+                    HubWebDriver realDriver = HubDriverFactory.unwrapIfLazy(state.driver);
+                    if (realDriver != null) {
+                        if (state.config.isPoolingEnabled()) {
+                            com.dod.hub.facade.pool.HubDriverPool.getInstance().returnDriver(realDriver, state.config);
+                        } else {
+                            realDriver.quit();
+                        }
+                    }
                 }
             }
         }

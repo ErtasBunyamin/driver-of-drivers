@@ -15,8 +15,32 @@ public class HubConfig {
     private long pageLoadTimeoutMs = 30000;
     private String gridUrl;
     private Map<String, Object> providerOptions = new HashMap<>();
+    private boolean poolingEnabled = false;
+    private boolean lazyInit = false;
+    private int poolMinIdle = 0;
+    private int poolMaxActive = 5;
 
     public HubConfig() {
+    }
+
+    /**
+     * Checks if lazy initialization is enabled.
+     * When true, the driver is created as a proxy and instantiated only upon first
+     * method usage.
+     *
+     * @return true if lazy initialization is enabled; false otherwise.
+     */
+    public boolean isLazyInit() {
+        return lazyInit;
+    }
+
+    /**
+     * Enables or disables lazy initialization of the driver.
+     *
+     * @param lazyInit true to enable lazy initialization; false for eager creation.
+     */
+    public void setLazyInit(boolean lazyInit) {
+        this.lazyInit = lazyInit;
     }
 
     public HubProviderType getProvider() {
@@ -73,6 +97,30 @@ public class HubConfig {
 
     public void setGridUrl(String gridUrl) {
         this.gridUrl = gridUrl;
+    }
+
+    public boolean isPoolingEnabled() {
+        return poolingEnabled;
+    }
+
+    public void setPoolingEnabled(boolean poolingEnabled) {
+        this.poolingEnabled = poolingEnabled;
+    }
+
+    public int getPoolMinIdle() {
+        return poolMinIdle;
+    }
+
+    public void setPoolMinIdle(int poolMinIdle) {
+        this.poolMinIdle = poolMinIdle;
+    }
+
+    public int getPoolMaxActive() {
+        return poolMaxActive;
+    }
+
+    public void setPoolMaxActive(int poolMaxActive) {
+        this.poolMaxActive = poolMaxActive;
     }
 
     public void addOption(String key, Object value) {

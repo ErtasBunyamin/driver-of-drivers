@@ -37,9 +37,32 @@ Hub Framework is built on the principle of "Separation of Concerns," offering th
 
 #### Maven
 ```xml
+<!-- Core starter (required) -->
 <dependency>
     <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-spring-boot-starter</artifactId>
+    <version>0.2.0</version>
+</dependency>
+
+<!-- Choose your provider (at least one required) -->
+<!-- Option 1: Selenium -->
+<dependency>
+    <groupId>io.github.ertasbunyamin</groupId>
+    <artifactId>hub-provider-selenium</artifactId>
+    <version>0.2.0</version>
+</dependency>
+
+<!-- Option 2: Playwright -->
+<dependency>
+    <groupId>io.github.ertasbunyamin</groupId>
+    <artifactId>hub-provider-playwright</artifactId>
+    <version>0.2.0</version>
+</dependency>
+
+<!-- Option 3: Hybrid (Selenium + Playwright via CDP) -->
+<dependency>
+    <groupId>io.github.ertasbunyamin</groupId>
+    <artifactId>hub-provider-hybrid</artifactId>
     <version>0.2.0</version>
 </dependency>
 ```
@@ -47,29 +70,55 @@ Hub Framework is built on the principle of "Separation of Concerns," offering th
 #### Gradle (Kotlin DSL)
 ```kotlin
 implementation("io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0")
+implementation("io.github.ertasbunyamin:hub-provider-selenium:0.2.0") // or playwright/hybrid
 ```
 
-#### Gradle (Groovy)
-```groovy
-implementation 'io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0'
-```
+### Quick Start
 
-#### Centralized Configuration
-Declarative management via `application.yml`:
+**1. Add `application.yml` to `src/test/resources`:**
 ```yaml
 hub:
-  provider: selenium   # Options: selenium, playwright, hybrid
-  browser: chrome      # Options: chrome, firefox, edge, webkit
+  provider: selenium
+  browser: chrome
   headless: true
-  performance:
-    lazy-init: true    # Defer driver creation until first use
-    pooling:
-      enabled: true    # Enable driver reuse
-      max-active: 5    # Max concurrent drivers
-  artifacts:
-    path: target/hub-artifacts
-    policy: ON_FAILURE # ALWAYS, ON_FAILURE, NEVER
 ```
+
+**2. Create your first test:**
+```java
+import com.dod.hub.facade.HubWebDriver;
+import com.dod.hub.starter.junit.HubDriver;
+import com.dod.hub.starter.junit.HubTest;
+import org.junit.jupiter.api.Test;
+
+@HubTest
+public class MyFirstTest {
+
+    @HubDriver
+    private HubWebDriver driver;
+
+    @Test
+    void shouldOpenGoogle() {
+        driver.get("https://www.google.com");
+        assert driver.getTitle().contains("Google");
+    }
+}
+```
+
+**3. Run the test!** 🚀
+
+### Configuration Options
+
+| Property | Default | Description |
+|:---|:---|:---|
+| `hub.provider` | `selenium` | Engine: `selenium`, `playwright`, `hybrid` |
+| `hub.browser` | `chrome` | Browser: `chrome`, `firefox`, `edge`, `webkit` |
+| `hub.headless` | `false` | Run browser in headless mode |
+| `hub.performance.lazy-init` | `false` | Defer driver creation until first use |
+| `hub.performance.pooling.enabled` | `false` | Enable driver reuse across tests |
+| `hub.performance.pooling.max-active` | `5` | Max concurrent pooled drivers |
+| `hub.artifacts.path` | `target/hub-artifacts` | Screenshot output directory |
+| `hub.artifacts.policy` | `ON_FAILURE` | Capture policy: `ALWAYS`, `ON_FAILURE`, `NEVER` |
+| `hub.telemetry.enabled` | `true` | Emit test events to JSON |
 
 ### Development Patterns & Framework Support
 
@@ -333,9 +382,18 @@ Hub Framework, "Separation of Concerns" (Sorumlulukların Ayrılması) prensibin
 
 #### Maven
 ```xml
+<!-- Ana starter (gerekli) -->
 <dependency>
     <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-spring-boot-starter</artifactId>
+    <version>0.2.0</version>
+</dependency>
+
+<!-- Provider seçin (en az biri gerekli) -->
+<!-- Seçenek 1: Selenium -->
+<dependency>
+    <groupId>io.github.ertasbunyamin</groupId>
+    <artifactId>hub-provider-selenium</artifactId>
     <version>0.2.0</version>
 </dependency>
 ```
@@ -343,12 +401,41 @@ Hub Framework, "Separation of Concerns" (Sorumlulukların Ayrılması) prensibin
 #### Gradle (Kotlin DSL)
 ```kotlin
 implementation("io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0")
+implementation("io.github.ertasbunyamin:hub-provider-selenium:0.2.0")
 ```
 
-#### Gradle (Groovy)
-```groovy
-implementation 'io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0'
+### Hızlı Başlangıç
+
+**1. `src/test/resources/application.yml` dosyası ekleyin:**
+```yaml
+hub:
+  provider: selenium
+  browser: chrome
+  headless: true
 ```
+
+**2. İlk testinizi oluşturun:**
+```java
+import com.dod.hub.facade.HubWebDriver;
+import com.dod.hub.starter.junit.HubDriver;
+import com.dod.hub.starter.junit.HubTest;
+import org.junit.jupiter.api.Test;
+
+@HubTest
+public class IlkTestim {
+
+    @HubDriver
+    private HubWebDriver driver;
+
+    @Test
+    void googleAcilmali() {
+        driver.get("https://www.google.com");
+        assert driver.getTitle().contains("Google");
+    }
+}
+```
+
+**3. Testi çalıştırın!** 🚀
 
 #### Merkezi Konfigürasyon Yönetimi
 `application.yml` üzerinden deklaratif yönetim:

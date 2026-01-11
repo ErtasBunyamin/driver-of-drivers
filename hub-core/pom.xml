@@ -10,6 +10,9 @@
     </parent>
 
     <artifactId>hub-core</artifactId>
+    <name>Hub Automation Framework - Core</name>
+    <description>Core interfaces and contracts for Hub Automation Framework</description>
+    <url>https://github.com/ErtasBunyamin/driver-of-drivers</url>
 
     <dependencies>
         <dependency>

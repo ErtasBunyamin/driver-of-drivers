@@ -10,6 +10,9 @@
     </parent>
 
     <artifactId>hub-spring-boot-starter</artifactId>
+    <name>Hub Automation Framework - Spring Boot Starter</name>
+    <description>Spring Boot integration for Hub Automation Framework</description>
+    <url>https://github.com/ErtasBunyamin/driver-of-drivers</url>
 
     <dependencies>
         <dependency>

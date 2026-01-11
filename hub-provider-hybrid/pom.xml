@@ -16,6 +16,7 @@
         A dual-driver provider that connects both Selenium and Playwright to the same browser session
         via Chrome DevTools Protocol (CDP), enabling synergistic automation capabilities.
     </description>
+    <url>https://github.com/ErtasBunyamin/driver-of-drivers</url>
 
     <dependencies>
         <!-- Core -->

@@ -10,7 +10,7 @@
 
     <name>Hub Automation Framework</name>
     <description>Unified Web UI Automation Facade for Selenium and Playwright</description>
-    <url>https://github.com/driver-of-drivers/DOD</url>
+    <url>https://github.com/ErtasBunyamin/driver-of-drivers</url>
 
     <licenses>
         <license>
@@ -29,9 +29,9 @@
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/driver-of-drivers/DOD.git</connection>
-        <developerConnection>scm:git:ssh://github.com:driver-of-drivers/DOD.git</developerConnection>
-        <url>https://github.com/driver-of-drivers/DOD</url>
+        <connection>scm:git:git://github.com/ErtasBunyamin/driver-of-drivers.git</connection>
+        <developerConnection>scm:git:ssh://github.com:ErtasBunyamin/driver-of-drivers.git</developerConnection>
+        <url>https://github.com/ErtasBunyamin/driver-of-drivers</url>
         <tag>v0.1.0</tag>
     </scm>
 

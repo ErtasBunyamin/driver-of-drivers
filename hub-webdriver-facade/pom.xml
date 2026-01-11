@@ -10,6 +10,9 @@
     </parent>
 
     <artifactId>hub-webdriver-facade</artifactId>
+    <name>Hub Automation Framework - WebDriver Facade</name>
+    <description>WebDriver compatibility layer for Hub Automation Framework</description>
+    <url>https://github.com/ErtasBunyamin/driver-of-drivers</url>
 
     <dependencies>
         <dependency>

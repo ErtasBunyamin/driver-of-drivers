@@ -44,13 +44,17 @@ Hub Framework is built on the principle of "Separation of Concerns," offering th
 Declarative management via `application.yml`:
 ```yaml
 hub:
-  provider: selenium # Options: selenium, playwright
-  browser: chrome    # Options: chrome, firefox, edge, webkit (playwright only)
+  provider: selenium   # Options: selenium, playwright, hybrid
+  browser: chrome      # Options: chrome, firefox, edge, webkit
   headless: true
-  grid-url: ${GRID_URL:http://localhost:4444/wd/hub}
-  provider-options:
-    acceptInsecureCerts: true
-    pageLoadStrategy: eager
+  performance:
+    lazy-init: true    # Defer driver creation until first use
+    pooling:
+      enabled: true    # Enable driver reuse
+      max-active: 5    # Max concurrent drivers
+  artifacts:
+    path: target/hub-artifacts
+    policy: ON_FAILURE # ALWAYS, ON_FAILURE, NEVER
 ```
 
 ### Development Patterns & Framework Support
@@ -123,6 +127,34 @@ public class LoginPage {
     }
 }
 ```
+
+### Advanced Features & Performance
+
+#### Artifact Management 📸
+Hub provides an automated artifact collection system integrated with the JUnit 5 lifecycle.
+
+| Policy | Description |
+| :--- | :--- |
+| `ALWAYS` | Captures artifacts for every test completion. |
+| `ON_FAILURE` | Captures only when a test fails (Default). |
+| `NEVER` | Disables artifact collection. |
+
+**Extensible Storage Strategy:**
+You can provide a custom `ArtifactManager` bean to store screenshots in S3, Azure, or custom cloud storage.
+
+```java
+@Bean
+public ArtifactManager s3Manager() {
+    return new S3ArtifactManager("my-bucket");
+}
+```
+
+#### Performance & Scaling ⚡
+Designed for high-concurrency environments like CI/CD pipelines.
+
+*   **Blocking Driver Pool**: Prevents resource exhaustion by blocking test threads until a driver becomes available.
+*   **Lazy Proxying**: Injects a proxy that only initializes the physical browser when a command (e.g., `driver.get()`) is actually called.
+*   **Thread-Safe Context**: Uses `ThreadLocal` storage to ensure zero leakage between parallel threads.
 
 ### Remote Execution and Infrastructure Support
 Hub supports hybrid cloud and on-premise Selenium Grid setups, as well as Playwright Connect scenarios. Custom browser capabilities can be configured both programmatically and decoratively.
@@ -274,13 +306,17 @@ Hub Framework, "Separation of Concerns" (Sorumlulukların Ayrılması) prensibin
 
 ```yaml
 hub:
-  provider: selenium # Seçenekler: selenium, playwright
-  browser: chrome    # Seçenekler: chrome, firefox, edge, webkit (sadece playwright)
+  provider: selenium   # Seçenekler: selenium, playwright, hybrid
+  browser: chrome      # Seçenekler: chrome, firefox, edge, webkit
   headless: true
-  grid-url: ${GRID_URL:http://localhost:4444/wd/hub}
-  provider-options:
-    acceptInsecureCerts: true
-    pageLoadStrategy: eager
+  performance:
+    lazy-init: true    # Sürücü oluşturmayı ilk kullanıma kadar erteler
+    pooling:
+      enabled: true    # Sürücü yeniden kullanımını etkinleştirir
+      max-active: 5    # Maksimum eşzamanlı sürücü sayısı
+  artifacts:
+    path: target/hub-artifacts
+    policy: ON_FAILURE # ALWAYS, ON_FAILURE, NEVER
 ```
 
 ### Geliştirme Desenleri ve Framework Desteği
@@ -353,6 +389,34 @@ public class LoginPage {
     }
 }
 ```
+
+### Gelişmiş Özellikler ve Performans
+
+#### Artifact ve Ekran Görüntüsü Yönetimi 📸
+Hub, JUnit 5 yaşam döngüsüne entegre bir otomatik artifact toplama sistemi sunar.
+
+| Politika | Açıklama |
+| :--- | :--- |
+| `ALWAYS` | Her test sonunda ekran görüntüsü alır. |
+| `ON_FAILURE` | Sadece test başarısız olduğunda alır (Varsayılan). |
+| `NEVER` | Artifact toplamayı kapatır. |
+
+**Genişletilebilir Depolama:**
+Ekran görüntülerini S3, Azure veya özel bir bulut depolama alanına kaydetmek için kendi `ArtifactManager` bean'inizi tanımlayabilirsiniz.
+
+```java
+@Bean
+public ArtifactManager s3Manager() {
+    return new S3ArtifactManager("bucket-adim");
+}
+```
+
+#### Performans ve Ölçeklendirme ⚡
+CI/CD süreçleri gibi yüksek eşzamanlılık gerektiren ortamlar için optimize edilmiştir.
+
+*   **Bloklayan Sürücü Havuzu (Blocking Pool)**: Kaynak tükenmesini önlemek için, boşta sürücü kalmadığında test thread'lerini güvenli bir şekilde bekletir.
+*   **Tembel Proxy (Lazy Proxy)**: Fiziksel tarayıcıyı sadece bir komut (örn. `driver.get()`) çağrıldığında ayağa kaldırarak boşta kaynak kullanımını engeller.
+*   **Thread-Safe Bağlam**: `ThreadLocal` yapısı sayesinde paralel koşan testler arasında veri sızıntısını sıfıra indirir.
 
 ### Uzaktan Yürütme ve Altyapı Desteği
 Hub, hibrit bulut ve şirket içi Selenium Grid yapılarının yanı sıra Playwright Connect senaryolarını da destekler. Özelleştirilmiş tarayıcı yetenekleri (Capabilities) hem programatik hem de deklaratif olarak konfigüre edilebilir.

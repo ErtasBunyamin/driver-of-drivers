@@ -6,6 +6,7 @@ import java.util.Map;
 import lombok.Data;
 import com.dod.hub.core.config.HubProviderType;
 import com.dod.hub.core.config.HubBrowserType;
+import com.dod.hub.core.config.HubArtifactPolicy;
 
 @Data
 @ConfigurationProperties(prefix = "hub")
@@ -50,6 +51,11 @@ public class HubProperties {
      */
     private Performance performance = new Performance();
 
+    /**
+     * Artifact generation configurations.
+     */
+    private Artifacts artifacts = new Artifacts();
+
     @Data
     public static class Performance {
         private boolean lazyInit = false;
@@ -61,5 +67,16 @@ public class HubProperties {
             private int minIdle = 0;
             private int maxActive = 5;
         }
+    }
+
+    @Data
+    public static class Artifacts {
+        private String path = "target/hub-artifacts";
+
+        /**
+         * Strategy for artifact generation.
+         * Default: ON_FAILURE
+         */
+        private HubArtifactPolicy policy = HubArtifactPolicy.ON_FAILURE;
     }
 }

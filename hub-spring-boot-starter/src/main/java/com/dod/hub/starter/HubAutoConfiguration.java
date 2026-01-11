@@ -5,6 +5,8 @@ import com.dod.hub.facade.HubWebDriver;
 import com.dod.hub.facade.pool.HubDriverPool;
 import com.dod.hub.starter.context.HubContext;
 import com.dod.hub.starter.pagefactory.HubSpringFactory;
+import com.dod.hub.starter.artifacts.ArtifactManager;
+import com.dod.hub.starter.artifacts.LocalFileSystemArtifactManager;
 
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -43,6 +45,11 @@ public class HubAutoConfiguration implements DisposableBean {
                 config.setPoolMaxActive(pooling.getMaxActive());
             }
         }
+
+        if (properties.getArtifacts() != null) {
+            config.setArtifactPath(properties.getArtifacts().getPath());
+            config.setArtifactPolicy(properties.getArtifacts().getPolicy());
+        }
         return config;
     }
 
@@ -50,6 +57,12 @@ public class HubAutoConfiguration implements DisposableBean {
     @ConditionalOnMissingBean
     public HubDriverFactory hubDriverFactory(HubConfig config) {
         return new HubDriverFactory(config);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ArtifactManager artifactManager(HubConfig config) {
+        return new LocalFileSystemArtifactManager(config);
     }
 
     /**

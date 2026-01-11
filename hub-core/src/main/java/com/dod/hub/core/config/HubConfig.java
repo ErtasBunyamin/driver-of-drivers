@@ -19,6 +19,8 @@ public class HubConfig {
     private boolean lazyInit = false;
     private int poolMinIdle = 0;
     private int poolMaxActive = 5;
+    private String artifactPath = "target/hub-artifacts";
+    private HubArtifactPolicy artifactPolicy = HubArtifactPolicy.ON_FAILURE;
 
     public HubConfig() {
     }
@@ -125,5 +127,21 @@ public class HubConfig {
 
     public void addOption(String key, Object value) {
         this.providerOptions.put(key, value);
+    }
+
+    public String getArtifactPath() {
+        return artifactPath;
+    }
+
+    public void setArtifactPath(String artifactPath) {
+        this.artifactPath = artifactPath;
+    }
+
+    public HubArtifactPolicy getArtifactPolicy() {
+        return artifactPolicy;
+    }
+
+    public void setArtifactPolicy(HubArtifactPolicy artifactPolicy) {
+        this.artifactPolicy = artifactPolicy;
     }
 }

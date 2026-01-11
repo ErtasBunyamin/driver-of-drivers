@@ -5,7 +5,8 @@ import com.dod.hub.core.locator.LocatorStrategy;
 import org.openqa.selenium.By;
 
 /**
- * Utility to convert Selenium 'By' to 'HubLocator'.
+ * Utility class for converting standard Selenium {@link By} locators into
+ * {@link HubLocator} objects used by the framework's internal core.
  */
 public class HubBy {
 

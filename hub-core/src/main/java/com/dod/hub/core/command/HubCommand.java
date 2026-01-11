@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Represents a single execution unit (action) in the Hub Framework.
- * This is the "Intermediate Representation" (IR) for MVP.
+ * Represents a single execution unit or action within the Hub Framework.
+ * Acts as the intermediate representation for commands dispatched to providers.
  */
 public class HubCommand {
     public static final String TARGET_BROWSER = "browser";

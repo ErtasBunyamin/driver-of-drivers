@@ -23,7 +23,6 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
     private final SessionCapabilities caps;
     private volatile ProviderSession session;
 
-    // Queued configurations
     private long implicitWaitMs = 0;
     private long pageLoadTimeoutMs = 0;
 
@@ -38,7 +37,8 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
     }
 
     /**
-     * For CGLIB Proxying and testing only.
+     * Internal constructor for proxy instantiation and framework-level testing.
+     * Should not be used for direct initialization.
      */
     protected HubWebDriver() {
         this.provider = null;
@@ -46,12 +46,16 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
         this.caps = null;
     }
 
+    /**
+     * Lazily initializes and returns the current provider session.
+     * 
+     * @return The active {@link ProviderSession}.
+     */
     public ProviderSession getSession() {
         if (session == null) {
             synchronized (this) {
                 if (session == null) {
                     session = provider.start(caps);
-                    // Apply queued timeouts
                     provider.setTimeouts(session, implicitWaitMs, pageLoadTimeoutMs);
                 }
             }
@@ -74,6 +78,11 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
         return new CommandContext(s, provider, cmd);
     }
 
+    /**
+     * Navigation to a specified URL.
+     *
+     * @param url The target URL.
+     */
     @Override
     public void get(String url) {
         ProviderSession s = getSession();
@@ -113,6 +122,12 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
         });
     }
 
+    /**
+     * Finds the first element matching the given locator.
+     *
+     * @param by The Selenium locator to use.
+     * @return The found {@link WebElement} wrapped as a {@link HubWebElement}.
+     */
     @Override
     public WebElement findElement(By by) {
         HubLocator locator = HubBy.toHubLocator(by);
@@ -160,7 +175,7 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
 
     @Override
     public TargetLocator switchTo() {
-        throw new UnsupportedOperationException("switchTo not supported in MVP");
+        throw new UnsupportedOperationException("Window/Frame switching is not supported in the current version.");
     }
 
     @Override
@@ -299,16 +314,17 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
             return (X) bytes;
         if (target == OutputType.BASE64)
             return (X) java.util.Base64.getEncoder().encodeToString(bytes);
-        throw new UnsupportedOperationException("Only BYTES and BASE64 supported in MVP");
+        throw new UnsupportedOperationException("Only BYTES and BASE64 output types are supported.");
     }
 
     @Override
     public Object executeScript(String script, Object... args) {
-        throw new UnsupportedOperationException("executeScript not supported in MVP");
+        throw new UnsupportedOperationException("JavaScript execution is not supported in the current version.");
     }
 
     @Override
     public Object executeAsyncScript(String script, Object... args) {
-        throw new UnsupportedOperationException("executeAsyncScript not supported in MVP");
+        throw new UnsupportedOperationException(
+                "Asynchronous JavaScript execution is not supported in the current version.");
     }
 }

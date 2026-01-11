@@ -15,15 +15,17 @@ import org.openqa.selenium.Rectangle;
 
 import java.util.List;
 
+/**
+ * Enterprise-grade implementation of {@link WebElement} that delegates
+ * operations
+ * to a selected {@link HubProvider} via the {@link CommandPipeline}.
+ */
 public class HubWebElement implements WebElement {
 
     private final HubElementRef elementRef;
-
-    // Shortcuts for pipeline access
     private final ProviderSession session;
     private final HubProvider provider;
     private final CommandPipeline pipeline;
-
     private final HubWebDriver driver;
 
     public HubWebElement(HubWebDriver driver, HubElementRef elementRef) {
@@ -163,6 +165,6 @@ public class HubWebElement implements WebElement {
 
     @Override
     public <X> X getScreenshotAs(OutputType<X> target) throws WebDriverException {
-        throw new UnsupportedOperationException("Element screenshot not supported in MVP");
+        throw new UnsupportedOperationException("Element-level screenshots are not supported in the current version.");
     }
 }

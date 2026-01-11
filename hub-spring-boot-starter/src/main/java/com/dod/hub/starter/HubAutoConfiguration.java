@@ -39,25 +39,15 @@ public class HubAutoConfiguration {
     }
 
     /**
-     * Exposes the "Active Context Driver" as a specific Spring Bean.
-     * This allows Page Objects to simply @Autowired HubWebDriver driver.
-     * 
-     * Uses Scoped Proxy (Prototype) to ensure we always fetch from ThreadLocal on
-     * invocation.
-     * BUT prototype returns a new one each time. We want a SINGLETON proxy that
-     * delegates.
-     * Spring's proxymode on Singleton? No.
-     * 
-     * Simplest: Use an implementation of HubWebDriver that delegates.
-     * But HubWebDriver is a class.
-     * 
-     * We will use a CGLIB proxy provided by @Scope(proxyMode=TARGET_CLASS).
-     * If scope is "prototype", the proxy will fetch a new target every time using
-     * the provider method?
-     * No, prototype scope means "inject a new instance".
-     * 
-     * We need a custom Scope?
-     * Actually, we can just define a subclass here that is a Delegate.
+     * Exposes the active {@link HubWebDriver} as a Spring-managed bean.
+     * This allows Page Objects and services to use {@code @Autowired HubWebDriver}.
+     * <p>
+     * The bean is configured as a scoped proxy (using CGLIB TARGET_CLASS mode)
+     * with prototype scope to ensure that method invocations are dynamically
+     * delegated to the driver instance currently registered in the
+     * {@link HubContext}.
+     *
+     * @return The active driver instance from the current thread context.
      */
     @Bean
     @ConditionalOnMissingBean

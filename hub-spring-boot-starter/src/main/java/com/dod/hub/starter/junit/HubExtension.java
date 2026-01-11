@@ -15,11 +15,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * JUnit 5 Extension to manage HubWebDriver lifecycle.
- * - BeforeEach: Create driver via HubDriverFactory.
- * - Injection: Set field annotated with @HubDriver (or @Autowired if desired,
- * but here we focus on explicit @HubDriver).
- * - AfterEach: Quit driver.
+ * JUnit 5 Extension responsible for managing the lifecycle of
+ * {@link HubWebDriver} instances.
+ * <p>
+ * This extension performs the following duties:
+ * <ul>
+ * <li>Initializes drivers for fields annotated with {@link HubDriver} before
+ * each test.</li>
+ * <li>Handles configuration overrides provided via annotation attributes.</li>
+ * <li>Manages thread-local driver context via {@link HubContext}.</li>
+ * <li>Ensures all created drivers are properly disposed of after each test
+ * session.</li>
+ * </ul>
  */
 public class HubExtension implements BeforeEachCallback, AfterEachCallback {
 

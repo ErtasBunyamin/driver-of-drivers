@@ -2,15 +2,13 @@ package com.dod.hub.core.locator;
 
 /**
  * A reference to a resolved element on a specific provider.
- * This wraps the actual provider object (WebElement, Locator, etc.)
- * but keeps the metadata about how it was found.
+ * This class encapsulates the provider-specific element implementation (e.g.,
+ * Selenium WebElement or Playwright Locator)
+ * along with the metadata used for its retrieval.
  */
 public class HubElementRef {
 
-    // The locator used to find this element (useful for re-finding if stale)
     private final HubLocator locator;
-
-    // The opaque provider-specific object (e.g., org.openqa.selenium.WebElement)
     private final Object providerHandle;
 
     public HubElementRef(HubLocator locator, Object providerHandle) {

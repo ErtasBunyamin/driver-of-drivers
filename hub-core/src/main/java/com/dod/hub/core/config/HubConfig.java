@@ -3,8 +3,12 @@ package com.dod.hub.core.config;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Represents the configuration for the Hub framework.
+ * Stores provider settings, browser preferences, and custom options.
+ */
 public class HubConfig {
-    private HubProviderType provider = HubProviderType.SELENIUM; // default
+    private HubProviderType provider = HubProviderType.SELENIUM;
     private HubBrowserType browser = HubBrowserType.CHROME;
     private boolean headless = false;
     private long implicitWaitMs = 0;

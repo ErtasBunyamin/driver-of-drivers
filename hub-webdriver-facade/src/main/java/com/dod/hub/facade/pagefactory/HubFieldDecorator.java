@@ -9,13 +9,14 @@ import java.lang.reflect.Field;
 import java.util.List;
 
 /**
- * Custom decorator that supports initializing custom Component objects
- * in addition to standard WebElements.
+ * Enhances the default field decorator to support the initialization of custom
+ * Component objects
+ * as well as standard WebElements.
  * 
- * Logic:
- * 1. If primitive/standard list -> delegate to super.
- * 2. If custom type -> try to find constructor(WebElement) and instantiate with
- * proxy.
+ * The decoration logic first attempts standard Selenium decoration. If no
+ * standard element is detected,
+ * and the field type extends HubComponent, it instantiates the component and
+ * injects a managed proxy.
  */
 public class HubFieldDecorator extends DefaultFieldDecorator {
 
@@ -31,7 +32,7 @@ public class HubFieldDecorator extends DefaultFieldDecorator {
             return decorated;
         }
 
-        // Check if it is a list of components - not supported in MVP
+        // Collection of components is not yet supported in the current version
         if (List.class.isAssignableFrom(field.getType())) {
             return null;
         }
@@ -45,8 +46,6 @@ public class HubFieldDecorator extends DefaultFieldDecorator {
         if (!HubComponent.class.isAssignableFrom(field.getType())) {
             return null;
         }
-
-        System.out.println("DEBUG: Decorating HubComponent field: " + field.getName());
 
         ElementLocator locator = factory.createLocator(field);
         if (locator == null) {

@@ -252,4 +252,4 @@ public class LoginPage {
 Hub, hibrit bulut ve şirket içi Selenium Grid yapılarının yanı sıra Playwright Connect senaryolarını da destekler. Özelleştirilmiş tarayıcı yetenekleri (Capabilities) hem programatik hem de deklaratif olarak konfigüre edilebilir.
 
 ---
-© 2026 **DOD Team** - Advanced Agentic Coding Systems. Tüm hakları saklıdır.
+© 2026 **DOD Framework**. All rights reserved.

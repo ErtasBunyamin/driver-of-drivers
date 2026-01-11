@@ -1,15 +1,16 @@
 package com.dod.hub.starter;
 
-import com.dod.hub.core.config.HubProviderType; // Added
+import com.dod.hub.core.config.HubProviderType;
 import com.dod.hub.core.config.HubConfig;
 import com.dod.hub.facade.HubFactory;
 import com.dod.hub.facade.HubWebDriver;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Singleton Factory bean to create HubWebDriver instances on demand.
- * This puts the control of the Driver lifecycle back into the hands of the
- * caller/tester.
+ * Factory bean responsible for the programmatic creation of
+ * {@link HubWebDriver} instances.
+ * This class serves as a bridge between Spring configuration and the
+ * {@link HubFactory}.
  */
 @RequiredArgsConstructor
 public class HubDriverFactory {

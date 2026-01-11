@@ -1,7 +1,7 @@
 package com.dod.hub.provider.selenium;
 
 import com.dod.hub.core.locator.HubElementRef;
-import com.dod.hub.core.config.HubBrowserType; // Added
+import com.dod.hub.core.config.HubBrowserType;
 import com.dod.hub.core.locator.HubLocator;
 import com.dod.hub.core.provider.HubProvider;
 import com.dod.hub.core.provider.ProviderSession;
@@ -21,6 +21,11 @@ import java.util.Map;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Provides an implementation of the {@link HubProvider} using the Selenium
+ * WebDriver library.
+ * Supports local and remote execution for various browser types.
+ */
 public class SeleniumProvider implements HubProvider {
     @Override
     public String getName() {

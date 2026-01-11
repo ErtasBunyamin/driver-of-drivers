@@ -1,6 +1,6 @@
 package com.dod.hub.provider.playwright;
 
-import com.dod.hub.core.config.HubBrowserType; // Added
+import com.dod.hub.core.config.HubBrowserType;
 import com.dod.hub.core.locator.HubElementRef;
 import com.dod.hub.core.locator.HubLocator;
 import com.dod.hub.core.provider.HubProvider;
@@ -12,6 +12,11 @@ import com.dod.hub.core.exception.HubTimeoutException;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Provides an implementation of the {@link HubProvider} using the Microsoft
+ * Playwright library.
+ * Supports local and remote execution via browser context management.
+ */
 public class PlaywrightProvider implements HubProvider {
 
     // Internal wrapper to hold all Playwright objects
@@ -118,9 +123,9 @@ public class PlaywrightProvider implements HubProvider {
     @Override
     public HubElementRef find(ProviderSession session, HubLocator locator) {
         Page page = getPage(session);
-        // Playwright locators are lazy, but Selenium's contract is eager (throws if not
-        // found).
-        // To bridge the gap, we wait for the element to be attached.
+        // Playwright locators are lazy by default. To adhere to the HubProvider
+        // contract,
+        // we enforce a synchronization point by waiting for the element to be attached.
         Locator l = page.locator(toSelector(locator)).first();
         // Check for strict/eager strategy (default: true) to mimic Selenium behavior
         boolean strict = true;

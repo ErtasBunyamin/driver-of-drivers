@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.dod.hub</groupId>
+        <groupId>io.github.ertasbunyamin</groupId>
         <artifactId>hub-parent</artifactId>
         <version>0.1.0</version>
     </parent>
@@ -13,18 +13,18 @@
 
     <dependencies>
         <dependency>
-            <groupId>com.dod.hub</groupId>
+            <groupId>io.github.ertasbunyamin</groupId>
             <artifactId>hub-webdriver-facade</artifactId>
         </dependency>
         <!-- Optional providers - typically user will pull in the one they want, 
              or the starter could bring both? For now keeping flexible -->
         <dependency>
-             <groupId>com.dod.hub</groupId>
+             <groupId>io.github.ertasbunyamin</groupId>
              <artifactId>hub-provider-selenium</artifactId>
              <optional>true</optional>
         </dependency>
         <dependency>
-             <groupId>com.dod.hub</groupId>
+             <groupId>io.github.ertasbunyamin</groupId>
              <artifactId>hub-provider-playwright</artifactId>
              <optional>true</optional>
         </dependency>

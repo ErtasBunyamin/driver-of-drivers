@@ -16,6 +16,7 @@ public class HubFactory {
         caps.setBrowserName(config.getBrowser());
         caps.setHeadless(config.isHeadless());
         caps.setOptions(config.getProviderOptions());
+        caps.setGridUrl(config.getGridUrl());
 
         HubWebDriver driver = new HubWebDriver(provider, caps);
         // Apply timeouts immediately

@@ -119,6 +119,10 @@ public class HubExtension implements BeforeEachCallback, AfterEachCallback, Test
             config.setGridUrl(annotation.gridUrl());
         }
 
+        if (!annotation.useGlobalHeadless()) {
+            config.setHeadless(annotation.headless());
+        }
+
         for (String opt : annotation.options()) {
             String[] parts = opt.split("=", 2);
             if (parts.length == 2) {

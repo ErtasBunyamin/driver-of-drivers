@@ -21,5 +21,18 @@ public @interface HubDriver {
 
     String gridUrl() default "";
 
+    /**
+     * When useGlobalHeadless is false, this value will override the global headless
+     * setting.
+     */
+    boolean headless() default false;
+
+    /**
+     * Indicates if the headless setting should be inherited from global config.
+     * When true (default), the annotation's headless value is ignored.
+     * Set to false to use the annotation's headless value.
+     */
+    boolean useGlobalHeadless() default true;
+
     String[] options() default {};
 }

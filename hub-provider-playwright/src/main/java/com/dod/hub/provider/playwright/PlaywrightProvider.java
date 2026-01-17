@@ -7,9 +7,17 @@ import com.dod.hub.core.provider.HubProvider;
 import com.dod.hub.core.provider.ProviderSession;
 import com.dod.hub.core.provider.SessionCapabilities;
 import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.WaitForSelectorState;
 import com.dod.hub.core.exception.HubTimeoutException;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -277,5 +285,135 @@ public class PlaywrightProvider implements HubProvider {
             page.setDefaultTimeout((double) implicitWaitMs);
         if (pageLoadMs > 0)
             page.setDefaultNavigationTimeout((double) pageLoadMs);
+    }
+
+    // ==================== JavaScript Execution ====================
+
+    @Override
+    public Object executeScript(ProviderSession session, String script, Object... args) {
+        Page page = getPage(session);
+        if (args.length == 0) {
+            return page.evaluate(script);
+        } else if (args.length == 1) {
+            return page.evaluate(script, args[0]);
+        } else {
+            return page.evaluate(script, Arrays.asList(args));
+        }
+    }
+
+    @Override
+    public Object executeAsyncScript(ProviderSession session, String script, Object... args) {
+        return executeScript(session, script, args);
+    }
+
+    // ==================== Cookie Management ====================
+
+    @Override
+    public void addCookie(ProviderSession session, String name, String value, String domain, String path) {
+        BrowserContext context = getCtx(session).context;
+        Cookie cookie = new Cookie(name, value);
+        if (domain != null)
+            cookie.setDomain(domain);
+        if (path != null)
+            cookie.setPath(path);
+        context.addCookies(Collections.singletonList(cookie));
+    }
+
+    @Override
+    public void deleteCookie(ProviderSession session, String name) {
+        BrowserContext context = getCtx(session).context;
+        List<Cookie> cookies = context.cookies();
+        context.clearCookies();
+        for (Cookie c : cookies) {
+            if (!c.name.equals(name)) {
+                context.addCookies(Collections.singletonList(c));
+            }
+        }
+    }
+
+    @Override
+    public void deleteAllCookies(ProviderSession session) {
+        getCtx(session).context.clearCookies();
+    }
+
+    @Override
+    public Set<Map<String, Object>> getCookies(ProviderSession session) {
+        List<Cookie> cookies = getCtx(session).context.cookies();
+        Set<Map<String, Object>> result = new HashSet<>();
+        for (Cookie cookie : cookies) {
+           Map<String, Object> map = new HashMap<>();
+            map.put("name", cookie.name);
+            map.put("value", cookie.value);
+            map.put("domain", cookie.domain);
+            map.put("path", cookie.path);
+            map.put("expires", cookie.expires);
+            map.put("secure", cookie.secure);
+            map.put("httpOnly", cookie.httpOnly);
+            result.add(map);
+        }
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> getCookie(ProviderSession session, String name) {
+        List<Cookie> cookies = getCtx(session).context.cookies();
+        for (Cookie cookie : cookies) {
+            if (cookie.name.equals(name)) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("name", cookie.name);
+                map.put("value", cookie.value);
+                map.put("domain", cookie.domain);
+                map.put("path", cookie.path);
+                map.put("expires", cookie.expires);
+                map.put("secure", cookie.secure);
+                map.put("httpOnly", cookie.httpOnly);
+                return map;
+            }
+        }
+        return null;
+    }
+
+    // ==================== Window Management ====================
+
+    @Override
+    public void maximizeWindow(ProviderSession session) {
+        Page page = getPage(session);
+        page.setViewportSize(1920, 1080);
+    }
+
+    @Override
+    public void setWindowSize(ProviderSession session, int width, int height) {
+        getPage(session).setViewportSize(width, height);
+    }
+
+    @Override
+    public int[] getWindowSize(ProviderSession session) {
+        Page page = getPage(session);
+        Object width = page.evaluate("window.innerWidth");
+        Object height = page.evaluate("window.innerHeight");
+        if (width instanceof Number && height instanceof Number) {
+            return new int[] { ((Number) width).intValue(), ((Number) height).intValue() };
+        }
+        return null;
+    }
+
+    @Override
+    public int[] getWindowPosition(ProviderSession session) {
+        throw new UnsupportedOperationException("getWindowPosition is not supported in Playwright");
+    }
+
+    @Override
+    public void setWindowPosition(ProviderSession session, int x, int y) {
+        throw new UnsupportedOperationException("setWindowPosition is not supported in Playwright");
+    }
+
+    @Override
+    public void fullscreenWindow(ProviderSession session) {
+        getPage(session).setViewportSize(1920, 1080);
+    }
+
+    @Override
+    public void minimizeWindow(ProviderSession session) {
+        throw new UnsupportedOperationException("minimizeWindow is not supported in Playwright");
     }
 }

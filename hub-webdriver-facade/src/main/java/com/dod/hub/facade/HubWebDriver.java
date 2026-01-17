@@ -10,10 +10,19 @@ import com.dod.hub.core.provider.HubProvider;
 import com.dod.hub.core.provider.ProviderSession;
 import com.dod.hub.core.provider.SessionCapabilities;
 import org.openqa.selenium.*;
+import org.openqa.selenium.logging.LogEntries;
 import org.openqa.selenium.logging.Logs;
 
+import java.net.URL;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecutor {
@@ -205,7 +214,7 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
             }
 
             @Override
-            public void to(java.net.URL url) {
+            public void to(URL url) {
                 get(url.toString());
             }
 
@@ -225,35 +234,76 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
         return new Options() {
             @Override
             public void addCookie(Cookie cookie) {
+                provider.addCookie(getSession(), cookie.getName(), cookie.getValue(),
+                        cookie.getDomain(), cookie.getPath());
             }
 
             @Override
             public void deleteCookieNamed(String name) {
+                provider.deleteCookie(getSession(), name);
             }
 
             @Override
             public void deleteCookie(Cookie cookie) {
+                provider.deleteCookie(getSession(), cookie.getName());
             }
 
             @Override
             public void deleteAllCookies() {
+                provider.deleteAllCookies(getSession());
             }
 
             @Override
             public Set<Cookie> getCookies() {
-                return Set.of();
+                Set<Map<String, Object>> providerCookies = provider.getCookies(getSession());
+                Set<Cookie> result = new HashSet<>();
+                for (Map<String, Object> map : providerCookies) {
+                    Cookie.Builder builder = new Cookie.Builder(
+                            (String) map.get("name"),
+                            (String) map.get("value"));
+                    if (map.get("domain") != null)
+                        builder.domain((String) map.get("domain"));
+                    if (map.get("path") != null)
+                        builder.path((String) map.get("path"));
+                    if (map.get("expiry") != null && map.get("expiry") instanceof Date) {
+                        builder.expiresOn((Date) map.get("expiry"));
+                    }
+                    if (map.get("secure") != null)
+                        builder.isSecure((Boolean) map.get("secure"));
+                    if (map.get("httpOnly") != null)
+                        builder.isHttpOnly((Boolean) map.get("httpOnly"));
+                    result.add(builder.build());
+                }
+                return result;
             }
 
             @Override
             public Cookie getCookieNamed(String name) {
-                return null;
+                Map<String, Object> map = provider.getCookie(getSession(), name);
+                if (map == null)
+                    return null;
+                Cookie.Builder builder = new Cookie.Builder(
+                        (String) map.get("name"),
+                        (String) map.get("value"));
+                if (map.get("domain") != null)
+                    builder.domain((String) map.get("domain"));
+                if (map.get("path") != null)
+                    builder.path((String) map.get("path"));
+                if (map.get("expiry") != null && map.get("expiry") instanceof Date) {
+                    builder.expiresOn((Date) map.get("expiry"));
+                }
+                if (map.get("secure") != null)
+                    builder.isSecure((Boolean) map.get("secure"));
+                if (map.get("httpOnly") != null)
+                    builder.isHttpOnly((Boolean) map.get("httpOnly"));
+                return builder.build();
             }
 
             @Override
             public Timeouts timeouts() {
                 return new Timeouts() {
                     @Override
-                    public Timeouts implicitlyWait(java.time.Duration duration) {
+                    public Timeouts implicitlyWait(Duration duration) {
                         implicitWaitMs = duration.toMillis();
                         if (session != null) {
                             provider.setTimeouts(session, implicitWaitMs, pageLoadTimeoutMs);
@@ -262,12 +312,12 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
                     }
 
                     @Override
-                    public Timeouts implicitlyWait(long time, java.util.concurrent.TimeUnit unit) {
-                        return implicitlyWait(java.time.Duration.ofMillis(unit.toMillis(time)));
+                    public Timeouts implicitlyWait(long time, TimeUnit unit) {
+                        return implicitlyWait(Duration.ofMillis(unit.toMillis(time)));
                     }
 
                     @Override
-                    public Timeouts pageLoadTimeout(java.time.Duration duration) {
+                    public Timeouts pageLoadTimeout(Duration duration) {
                         pageLoadTimeoutMs = duration.toMillis();
                         if (session != null) {
                             provider.setTimeouts(session, implicitWaitMs, pageLoadTimeoutMs);
@@ -276,17 +326,17 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
                     }
 
                     @Override
-                    public Timeouts pageLoadTimeout(long time, java.util.concurrent.TimeUnit unit) {
-                        return pageLoadTimeout(java.time.Duration.ofMillis(unit.toMillis(time)));
+                    public Timeouts pageLoadTimeout(long time, TimeUnit unit) {
+                        return pageLoadTimeout(Duration.ofMillis(unit.toMillis(time)));
                     }
 
                     @Override
-                    public Timeouts scriptTimeout(java.time.Duration duration) {
+                    public Timeouts scriptTimeout(Duration duration) {
                         return this;
                     }
 
                     @Override
-                    public Timeouts setScriptTimeout(long time, java.util.concurrent.TimeUnit unit) {
+                    public Timeouts setScriptTimeout(long time, TimeUnit unit) {
                         return this;
                     }
                 };
@@ -294,12 +344,63 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
 
             @Override
             public Window window() {
-                return null;
+                return new Window() {
+                    @Override
+                    public Dimension getSize() {
+                        int[] size = provider.getWindowSize(getSession());
+                        if (size == null)
+                            return new Dimension(0, 0);
+                        return new Dimension(size[0], size[1]);
+                    }
+
+                    @Override
+                    public void setSize(Dimension targetSize) {
+                        provider.setWindowSize(getSession(), targetSize.getWidth(), targetSize.getHeight());
+                    }
+
+                    @Override
+                    public Point getPosition() {
+                        int[] pos = provider.getWindowPosition(getSession());
+                        if (pos == null)
+                            return new Point(0, 0);
+                        return new Point(pos[0], pos[1]);
+                    }
+
+                    @Override
+                    public void setPosition(Point targetPosition) {
+                        provider.setWindowPosition(getSession(), targetPosition.getX(), targetPosition.getY());
+                    }
+
+                    @Override
+                    public void maximize() {
+                        provider.maximizeWindow(getSession());
+                    }
+
+                    @Override
+                    public void minimize() {
+                        provider.minimizeWindow(getSession());
+                    }
+
+                    @Override
+                    public void fullscreen() {
+                        provider.fullscreenWindow(getSession());
+                    }
+                };
             }
 
             @Override
             public Logs logs() {
-                return null;
+                return new Logs() {
+                    @Override
+                    public LogEntries get(String logType) {
+                        return new LogEntries(Collections.emptyList());
+                    }
+
+                    @Override
+                    public Set<String> getAvailableLogTypes() {
+                        return Collections.emptySet();
+                    }
+                };
             }
         };
     }
@@ -313,18 +414,19 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
         if (target == OutputType.BYTES)
             return (X) bytes;
         if (target == OutputType.BASE64)
-            return (X) java.util.Base64.getEncoder().encodeToString(bytes);
+            return (X) Base64.getEncoder().encodeToString(bytes);
         throw new UnsupportedOperationException("Only BYTES and BASE64 output types are supported.");
     }
 
     @Override
     public Object executeScript(String script, Object... args) {
-        throw new UnsupportedOperationException("JavaScript execution is not supported in the current version.");
+        CommandContext context = ctx(CommandType.EXECUTE_SCRIPT, HubCommand.TARGET_BROWSER);
+        return pipeline.execute(context, () -> provider.executeScript(getSession(), script, args));
     }
 
     @Override
     public Object executeAsyncScript(String script, Object... args) {
-        throw new UnsupportedOperationException(
-                "Asynchronous JavaScript execution is not supported in the current version.");
+        CommandContext context = ctx(CommandType.EXECUTE_ASYNC_SCRIPT, HubCommand.TARGET_BROWSER);
+        return pipeline.execute(context, () -> provider.executeAsyncScript(getSession(), script, args));
     }
 }

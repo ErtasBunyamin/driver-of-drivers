@@ -2,7 +2,11 @@ package com.dod.hub.core.provider;
 
 import com.dod.hub.core.locator.HubElementRef;
 import com.dod.hub.core.locator.HubLocator;
+
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * The SPI interface that all concrete automation providers (Selenium,
@@ -178,4 +182,156 @@ public interface HubProvider {
      * Sets timeouts for the session.
      */
     void setTimeouts(ProviderSession session, long implicitWaitMs, long pageLoadMs);
+
+    // ==================== JavaScript Execution ====================
+
+    /**
+     * Executes JavaScript in the context of the current page.
+     *
+     * @param session The active provider session.
+     * @param script  The JavaScript code to execute.
+     * @param args    Arguments to pass to the script.
+     * @return The result of the script execution.
+     */
+    default Object executeScript(ProviderSession session, String script, Object... args) {
+        throw new UnsupportedOperationException("JavaScript execution is not supported by this provider.");
+    }
+
+    /**
+     * Executes asynchronous JavaScript in the context of the current page.
+     *
+     * @param session The active provider session.
+     * @param script  The JavaScript code to execute.
+     * @param args    Arguments to pass to the script.
+     * @return The result of the script execution.
+     */
+    default Object executeAsyncScript(ProviderSession session, String script, Object... args) {
+        throw new UnsupportedOperationException("Async JavaScript execution is not supported by this provider.");
+    }
+
+    // ==================== Cookie Management ====================
+
+    /**
+     * Adds a cookie to the current session.
+     *
+     * @param session The active provider session.
+     * @param name    Cookie name.
+     * @param value   Cookie value.
+     * @param domain  Cookie domain (can be null).
+     * @param path    Cookie path (can be null).
+     */
+    default void addCookie(ProviderSession session, String name, String value, String domain, String path) {
+        // Default no-op for backward compatibility
+    }
+
+    /**
+     * Deletes a cookie by name.
+     *
+     * @param session The active provider session.
+     * @param name    The name of the cookie to delete.
+     */
+    default void deleteCookie(ProviderSession session, String name) {
+        // Default no-op for backward compatibility
+    }
+
+    /**
+     * Deletes all cookies from the current session.
+     *
+     * @param session The active provider session.
+     */
+    default void deleteAllCookies(ProviderSession session) {
+        // Default no-op for backward compatibility
+    }
+
+    /**
+     * Retrieves all cookies from the current session.
+     *
+     * @param session The active provider session.
+     * @return A set of cookie maps containing name, value, domain, path, etc.
+     */
+    default Set<Map<String, Object>> getCookies(ProviderSession session) {
+        return Collections.emptySet();
+    }
+
+    /**
+     * Retrieves a cookie by name.
+     *
+     * @param session The active provider session.
+     * @param name    The name of the cookie.
+     * @return Cookie data as a map, or null if not found.
+     */
+    default Map<String, Object> getCookie(ProviderSession session, String name) {
+        return null;
+    }
+
+    // ==================== Window Management ====================
+
+    /**
+     * Maximizes the browser window.
+     *
+     * @param session The active provider session.
+     */
+    default void maximizeWindow(ProviderSession session) {
+        // Default no-op for backward compatibility
+    }
+
+    /**
+     * Sets the browser window size.
+     *
+     * @param session The active provider session.
+     * @param width   Window width in pixels.
+     * @param height  Window height in pixels.
+     */
+    default void setWindowSize(ProviderSession session, int width, int height) {
+        // Default no-op for backward compatibility
+    }
+
+    /**
+     * Gets the browser window size.
+     *
+     * @param session The active provider session.
+     * @return An int array [width, height], or null if not supported.
+     */
+    default int[] getWindowSize(ProviderSession session) {
+        return null;
+    }
+
+    /**
+     * Gets the browser window position.
+     *
+     * @param session The active provider session.
+     * @return An int array [x, y], or null if not supported.
+     */
+    default int[] getWindowPosition(ProviderSession session) {
+        return null;
+    }
+
+    /**
+     * Sets the browser window position.
+     *
+     * @param session The active provider session.
+     * @param x       X coordinate.
+     * @param y       Y coordinate.
+     */
+    default void setWindowPosition(ProviderSession session, int x, int y) {
+        // Default no-op for backward compatibility
+    }
+
+    /**
+     * Fullscreens the browser window.
+     *
+     * @param session The active provider session.
+     */
+    default void fullscreenWindow(ProviderSession session) {
+        // Default no-op for backward compatibility
+    }
+
+    /**
+     * Minimizes the browser window.
+     *
+     * @param session The active provider session.
+     */
+    default void minimizeWindow(ProviderSession session) {
+        // Default no-op for backward compatibility
+    }
 }

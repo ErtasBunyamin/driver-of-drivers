@@ -9,7 +9,15 @@ import com.dod.hub.core.provider.SessionCapabilities;
 import com.dod.hub.core.exception.HubTimeoutException;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.WaitForSelectorState;
-import org.openqa.selenium.*;
+import org.openqa.selenium.By;
+import org.openqa.selenium.Cookie;
+import org.openqa.selenium.Dimension;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.Point;
+import org.openqa.selenium.TimeoutException;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.slf4j.Logger;
@@ -22,19 +30,23 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * A dual-driver provider that connects both Selenium and Playwright to the same browser session
+ * A dual-driver provider that connects both Selenium and Playwright to the same
+ * browser session
  * via Chrome DevTools Protocol (CDP).
  * <p>
  * This enables leveraging the strengths of both frameworks:
  * <ul>
- *   <li>Selenium: Mature element interaction, synchronous API</li>
- *   <li>Playwright: Auto-waiting, network interception, modern async patterns</li>
+ * <li>Selenium: Mature element interaction, synchronous API</li>
+ * <li>Playwright: Auto-waiting, network interception, modern async
+ * patterns</li>
  * </ul>
  * <p>
- * <strong>Note:</strong> This provider only supports Chromium-based browsers (Chrome, Edge).
+ * <strong>Note:</strong> This provider only supports Chromium-based browsers
+ * (Chrome, Edge).
  */
 public class HybridProvider implements HubProvider {
 
@@ -71,8 +83,7 @@ public class HybridProvider implements HubProvider {
                 playwright,
                 playwrightBrowser,
                 playwrightPage,
-                userDataDir
-        );
+                userDataDir);
 
         logger.info("HybridSession started on CDP port {}", cdpPort);
         return session;
@@ -86,15 +97,20 @@ public class HybridProvider implements HubProvider {
         HybridSession hybrid = (HybridSession) session;
 
         try {
-            if (hybrid.getPlaywrightPage() != null) hybrid.getPlaywrightPage().close();
-            if (hybrid.getPlaywrightBrowser() != null) hybrid.getPlaywrightBrowser().close();
-            if (hybrid.getPlaywright() != null) hybrid.getPlaywright().close();
+            if (hybrid.getPlaywrightPage() != null)
+                hybrid.getPlaywrightPage().close();
+            if (hybrid.getPlaywrightBrowser() != null)
+                hybrid.getPlaywrightBrowser().close();
+            if (hybrid.getPlaywright() != null)
+                hybrid.getPlaywright().close();
         } catch (Exception e) {
             logger.warn("Error closing Playwright resources", e);
         }
 
         try {
-            if (hybrid.getSeleniumDriver() != null) hybrid.getSeleniumDriver().quit();
+            if (hybrid.getSeleniumDriver() != null) {
+                hybrid.getSeleniumDriver().quit();
+            }
         } catch (Exception e) {
             logger.warn("Error closing Selenium driver", e);
         }
@@ -118,14 +134,15 @@ public class HybridProvider implements HubProvider {
         logger.info("HybridSession stopped");
     }
 
-    // ==================== Element Operations (Hybrid Strategy) ====================
+    // ==================== Element Operations (Hybrid Strategy)
+    // ====================
 
     @Override
     public HubElementRef find(ProviderSession session, HubLocator locator) {
         HybridSession hybrid = (HybridSession) session;
-        
+
         boolean usePlaywrightWait = resolveUsePlaywrightWait(hybrid.getCapabilities());
-        
+
         if (usePlaywrightWait) {
             Page page = hybrid.getPlaywrightPage();
             String selector = toPlaywrightSelector(locator);
@@ -136,7 +153,7 @@ public class HybridProvider implements HubProvider {
                 throw new HubTimeoutException("Playwright auto-wait timed out for: " + locator, e);
             }
         }
-        
+
         WebDriver driver = hybrid.getSeleniumDriver();
         try {
             WebElement el = driver.findElement(toSeleniumBy(locator));
@@ -273,8 +290,117 @@ public class HybridProvider implements HubProvider {
             driver.manage().timeouts().pageLoadTimeout(java.time.Duration.ofMillis(pageLoadMs));
 
         Page page = getPlaywrightPage(session);
-        if (implicitWaitMs > 0) page.setDefaultTimeout((double) implicitWaitMs);
-        if (pageLoadMs > 0) page.setDefaultNavigationTimeout((double) pageLoadMs);
+        if (implicitWaitMs > 0)
+            page.setDefaultTimeout((double) implicitWaitMs);
+        if (pageLoadMs > 0)
+            page.setDefaultNavigationTimeout((double) pageLoadMs);
+    }
+
+    // ==================== JavaScript Execution (Selenium-based) =================
+
+    @Override
+    public Object executeScript(ProviderSession session, String script, Object... args) {
+        return ((JavascriptExecutor) getSelenium(session)).executeScript(script, args);
+    }
+
+    @Override
+    public Object executeAsyncScript(ProviderSession session, String script, Object... args) {
+        return ((JavascriptExecutor) getSelenium(session)).executeAsyncScript(script, args);
+    }
+
+    // ==================== Cookie Management (Selenium-based) ====================
+
+    @Override
+    public void addCookie(ProviderSession session, String name, String value, String domain, String path) {
+        Cookie.Builder builder = new Cookie.Builder(name, value);
+        if (domain != null)
+            builder.domain(domain);
+        if (path != null)
+            builder.path(path);
+        getSelenium(session).manage().addCookie(builder.build());
+    }
+
+    @Override
+    public void deleteCookie(ProviderSession session, String name) {
+        getSelenium(session).manage().deleteCookieNamed(name);
+    }
+
+    @Override
+    public void deleteAllCookies(ProviderSession session) {
+        getSelenium(session).manage().deleteAllCookies();
+    }
+
+    @Override
+    public Set<Map<String, Object>> getCookies(ProviderSession session) {
+        Set<Cookie> cookies = getSelenium(session).manage().getCookies();
+        Set<Map<String, Object>> result = new HashSet<>();
+        for (Cookie c : cookies) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("name", c.getName());
+            map.put("value", c.getValue());
+            map.put("domain", c.getDomain());
+            map.put("path", c.getPath());
+            map.put("expires", c.getExpiry());
+            map.put("secure", c.isSecure());
+            map.put("httpOnly", c.isHttpOnly());
+            result.add(map);
+        }
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> getCookie(ProviderSession session, String name) {
+        Cookie c = getSelenium(session).manage().getCookieNamed(name);
+        if (c == null)
+            return null;
+        Map<String, Object> map = new HashMap<>();
+        map.put("name", c.getName());
+        map.put("value", c.getValue());
+        map.put("domain", c.getDomain());
+        map.put("path", c.getPath());
+        map.put("expires", c.getExpiry());
+        map.put("secure", c.isSecure());
+        map.put("httpOnly", c.isHttpOnly());
+        return map;
+    }
+
+    // ==================== Window Management (Selenium-based) ====================
+
+    @Override
+    public void maximizeWindow(ProviderSession session) {
+        getSelenium(session).manage().window().maximize();
+    }
+
+    @Override
+    public void minimizeWindow(ProviderSession session) {
+        getSelenium(session).manage().window().minimize();
+    }
+
+    @Override
+    public void fullscreenWindow(ProviderSession session) {
+        getSelenium(session).manage().window().fullscreen();
+    }
+
+    @Override
+    public void setWindowSize(ProviderSession session, int width, int height) {
+        getSelenium(session).manage().window().setSize(new Dimension(width, height));
+    }
+
+    @Override
+    public int[] getWindowSize(ProviderSession session) {
+        Dimension size = getSelenium(session).manage().window().getSize();
+        return new int[] { size.getWidth(), size.getHeight() };
+    }
+
+    @Override
+    public void setWindowPosition(ProviderSession session, int x, int y) {
+        getSelenium(session).manage().window().setPosition(new Point(x, y));
+    }
+
+    @Override
+    public int[] getWindowPosition(ProviderSession session) {
+        Point pos = getSelenium(session).manage().window().getPosition();
+        return new int[] { pos.getX(), pos.getY() };
     }
 
     // ==================== Internal Helpers ====================
@@ -315,8 +441,8 @@ public class HybridProvider implements HubProvider {
                 "--no-default-browser-check",
                 "--disable-background-networking",
                 "--disable-extensions",
-                caps.isHeadless() ? "--headless=new" : ""
-        ).stream().filter(s -> !s.isEmpty()).collect(Collectors.toList());
+                caps.isHeadless() ? "--headless=new" : "").stream().filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
 
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
@@ -334,7 +460,8 @@ public class HybridProvider implements HubProvider {
                 System.getenv("LOCALAPPDATA") + "\\Google\\Chrome\\Application\\chrome.exe"
         };
         for (String path : windowsPaths) {
-            if (new File(path).exists()) return path;
+            if (new File(path).exists())
+                return path;
         }
         throw new HubException("Chrome executable not found. Please ensure Chrome is installed.");
     }
@@ -375,24 +502,37 @@ public class HybridProvider implements HubProvider {
 
     private By toSeleniumBy(HubLocator locator) {
         switch (locator.getStrategy()) {
-            case CSS: return By.cssSelector(locator.getValue());
-            case XPATH: return By.xpath(locator.getValue());
-            case ID: return By.id(locator.getValue());
-            case NAME: return By.name(locator.getValue());
-            case CLASS_NAME: return By.className(locator.getValue());
-            case TAG_NAME: return By.tagName(locator.getValue());
-            case LINK_TEXT: return By.linkText(locator.getValue());
-            case PARTIAL_LINK_TEXT: return By.partialLinkText(locator.getValue());
-            default: throw new IllegalArgumentException("Unsupported strategy: " + locator.getStrategy());
+            case CSS:
+                return By.cssSelector(locator.getValue());
+            case XPATH:
+                return By.xpath(locator.getValue());
+            case ID:
+                return By.id(locator.getValue());
+            case NAME:
+                return By.name(locator.getValue());
+            case CLASS_NAME:
+                return By.className(locator.getValue());
+            case TAG_NAME:
+                return By.tagName(locator.getValue());
+            case LINK_TEXT:
+                return By.linkText(locator.getValue());
+            case PARTIAL_LINK_TEXT:
+                return By.partialLinkText(locator.getValue());
+            default:
+                throw new IllegalArgumentException("Unsupported strategy: " + locator.getStrategy());
         }
     }
 
     private void deleteDirectory(Path path) throws IOException {
-        if (path == null || !Files.exists(path)) return;
+        if (path == null || !Files.exists(path))
+            return;
         Files.walk(path)
                 .sorted(java.util.Comparator.reverseOrder())
                 .forEach(p -> {
-                    try { Files.delete(p); } catch (IOException ignored) {}
+                    try {
+                        Files.delete(p);
+                    } catch (IOException ignored) {
+                    }
                 });
     }
 
@@ -408,15 +548,24 @@ public class HybridProvider implements HubProvider {
 
     private String toPlaywrightSelector(HubLocator locator) {
         switch (locator.getStrategy()) {
-            case CSS: return "css=" + locator.getValue();
-            case XPATH: return "xpath=" + locator.getValue();
-            case ID: return "#" + locator.getValue();
-            case NAME: return "[name='" + locator.getValue() + "']";
-            case CLASS_NAME: return "." + locator.getValue();
-            case TAG_NAME: return "css=" + locator.getValue();
-            case LINK_TEXT: return "text='" + locator.getValue() + "'";
-            case PARTIAL_LINK_TEXT: return "text=" + locator.getValue();
-            default: throw new IllegalArgumentException("Unsupported Locator for Playwright: " + locator.getStrategy());
+            case CSS:
+                return "css=" + locator.getValue();
+            case XPATH:
+                return "xpath=" + locator.getValue();
+            case ID:
+                return "#" + locator.getValue();
+            case NAME:
+                return "[name='" + locator.getValue() + "']";
+            case CLASS_NAME:
+                return "." + locator.getValue();
+            case TAG_NAME:
+                return "css=" + locator.getValue();
+            case LINK_TEXT:
+                return "text='" + locator.getValue() + "'";
+            case PARTIAL_LINK_TEXT:
+                return "text=" + locator.getValue();
+            default:
+                throw new IllegalArgumentException("Unsupported Locator for Playwright: " + locator.getStrategy());
         }
     }
 }

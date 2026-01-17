@@ -16,8 +16,11 @@ import com.dod.hub.core.exception.HubException;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.time.Duration;
 import java.util.Map;
-
+import java.util.Set;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -254,8 +257,123 @@ public class SeleniumProvider implements HubProvider {
     public void setTimeouts(ProviderSession session, long implicitWaitMs, long pageLoadMs) {
         WebDriver.Options manage = getDriver(session).manage();
         if (implicitWaitMs > 0)
-            manage.timeouts().implicitlyWait(java.time.Duration.ofMillis(implicitWaitMs));
+            manage.timeouts().implicitlyWait(Duration.ofMillis(implicitWaitMs));
         if (pageLoadMs > 0)
-            manage.timeouts().pageLoadTimeout(java.time.Duration.ofMillis(pageLoadMs));
+            manage.timeouts().pageLoadTimeout(Duration.ofMillis(pageLoadMs));
+    }
+
+    // ==================== JavaScript Execution ====================
+
+    @Override
+    public Object executeScript(ProviderSession session, String script, Object... args) {
+        WebDriver driver = getDriver(session);
+        if (driver instanceof JavascriptExecutor) {
+            return ((JavascriptExecutor) driver).executeScript(script, args);
+        }
+        throw new UnsupportedOperationException("Driver does not support JavaScript execution");
+    }
+
+    @Override
+    public Object executeAsyncScript(ProviderSession session, String script, Object... args) {
+        WebDriver driver = getDriver(session);
+        if (driver instanceof JavascriptExecutor) {
+            return ((JavascriptExecutor) driver).executeAsyncScript(script, args);
+        }
+        throw new UnsupportedOperationException("Driver does not support async JavaScript execution");
+    }
+
+    // ==================== Cookie Management ====================
+
+    @Override
+    public void addCookie(ProviderSession session, String name, String value, String domain, String path) {
+        Cookie.Builder builder = new Cookie.Builder(name, value);
+        if (domain != null)
+            builder.domain(domain);
+        if (path != null)
+            builder.path(path);
+        getDriver(session).manage().addCookie(builder.build());
+    }
+
+    @Override
+    public void deleteCookie(ProviderSession session, String name) {
+        getDriver(session).manage().deleteCookieNamed(name);
+    }
+
+    @Override
+    public void deleteAllCookies(ProviderSession session) {
+        getDriver(session).manage().deleteAllCookies();
+    }
+
+    @Override
+    public Set<Map<String, Object>> getCookies(ProviderSession session) {
+        Set<Cookie> cookies = getDriver(session).manage().getCookies();
+        Set<Map<String, Object>> result = new HashSet<>();
+        for (Cookie cookie : cookies) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("name", cookie.getName());
+            map.put("value", cookie.getValue());
+            map.put("domain", cookie.getDomain());
+            map.put("path", cookie.getPath());
+            map.put("expiry", cookie.getExpiry());
+            map.put("secure", cookie.isSecure());
+            map.put("httpOnly", cookie.isHttpOnly());
+            result.add(map);
+        }
+        return result;
+    }
+
+    @Override
+    public Map<String, Object> getCookie(ProviderSession session, String name) {
+        Cookie cookie = getDriver(session).manage().getCookieNamed(name);
+        if (cookie == null)
+            return null;
+        Map<String, Object> map = new HashMap<>();
+        map.put("name", cookie.getName());
+        map.put("value", cookie.getValue());
+        map.put("domain", cookie.getDomain());
+        map.put("path", cookie.getPath());
+        map.put("expiry", cookie.getExpiry());
+        map.put("secure", cookie.isSecure());
+        map.put("httpOnly", cookie.isHttpOnly());
+        return map;
+    }
+
+    // ==================== Window Management ====================
+
+    @Override
+    public void maximizeWindow(ProviderSession session) {
+        getDriver(session).manage().window().maximize();
+    }
+
+    @Override
+    public void setWindowSize(ProviderSession session, int width, int height) {
+        getDriver(session).manage().window().setSize(new Dimension(width, height));
+    }
+
+    @Override
+    public int[] getWindowSize(ProviderSession session) {
+        Dimension size = getDriver(session).manage().window().getSize();
+        return new int[] { size.getWidth(), size.getHeight() };
+    }
+
+    @Override
+    public int[] getWindowPosition(ProviderSession session) {
+        Point pos = getDriver(session).manage().window().getPosition();
+        return new int[] { pos.getX(), pos.getY() };
+    }
+
+    @Override
+    public void setWindowPosition(ProviderSession session, int x, int y) {
+        getDriver(session).manage().window().setPosition(new Point(x, y));
+    }
+
+    @Override
+    public void fullscreenWindow(ProviderSession session) {
+        getDriver(session).manage().window().fullscreen();
+    }
+
+    @Override
+    public void minimizeWindow(ProviderSession session) {
+        getDriver(session).manage().window().minimize();
     }
 }

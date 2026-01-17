@@ -33,5 +33,9 @@ public enum CommandType {
     PAGE_SOURCE,
     SET_TIMEOUTS,
     GET_TITLE,
-    GET_CURRENT_URL
+    GET_CURRENT_URL,
+
+    // JavaScript Execution
+    EXECUTE_SCRIPT,
+    EXECUTE_ASYNC_SCRIPT
 }

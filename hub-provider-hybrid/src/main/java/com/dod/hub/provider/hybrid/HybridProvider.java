@@ -20,12 +20,18 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.Capabilities;
+import org.openqa.selenium.HasCapabilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URI;
+
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,6 +68,70 @@ public class HybridProvider implements HubProvider {
 
     @Override
     public ProviderSession start(SessionCapabilities caps) {
+        String gridUrl = caps.getGridUrl();
+        if (gridUrl != null && !gridUrl.isEmpty()) {
+            return startRemote(caps, gridUrl);
+        } else {
+            return startLocal(caps);
+        }
+    }
+
+    private ProviderSession startRemote(SessionCapabilities caps, String gridUrl) {
+        logger.info("Starting Hybrid Session in REMOTE mode connecting to: {}", gridUrl);
+
+        WebDriver seleniumDriver;
+        try {
+            seleniumDriver = createRemoteWebDriver(gridUrl, caps);
+        } catch (MalformedURLException | IllegalArgumentException e) {
+            throw new HubException("Invalid Grid URL: " + gridUrl, e);
+        }
+
+        String cdpUrl = null;
+        if (seleniumDriver instanceof HasCapabilities) {
+            Capabilities capabilities = ((HasCapabilities) seleniumDriver).getCapabilities();
+            Object cdp = capabilities.getCapability("se:cdp");
+            if (cdp != null) {
+                cdpUrl = cdp.toString();
+            } else {
+                logger.warn("Capability 'se:cdp' not found. Remote CDP connection might fail.");
+            }
+        }
+
+        if (cdpUrl == null) {
+            seleniumDriver.quit();
+            throw new HubException("Could not retrieve CDP endpoint (se:cdp) from RemoteWebDriver. " +
+                    "Ensure you are using Selenium Grid 4 which forwards CDP.");
+        }
+
+        cdpUrl = sanitizeCdpUrl(cdpUrl, gridUrl);
+
+        logger.info("Connecting Playwright to Remote CDP: {}", cdpUrl);
+
+        Playwright playwright = createPlaywright();
+        Browser playwrightBrowser;
+        try {
+            playwrightBrowser = connectPlaywright(playwright, cdpUrl);
+        } catch (Exception e) {
+            seleniumDriver.quit();
+            playwright.close();
+            throw new HubException("Failed to connect Playwright to remote CDP: " + cdpUrl, e);
+        }
+
+        Page playwrightPage = playwrightBrowser.contexts().get(0).pages().get(0);
+
+        return new HybridSession(
+                getName(),
+                caps,
+                null, // No local process
+                seleniumDriver,
+                playwright,
+                playwrightBrowser,
+                playwrightPage,
+                null // No local user data dir
+        );
+    }
+
+    private ProviderSession startLocal(SessionCapabilities caps) {
         int cdpPort = resolveCdpPort(caps);
         Path userDataDir = createTempProfile();
 
@@ -69,7 +139,7 @@ public class HybridProvider implements HubProvider {
 
         waitForCdpReady(cdpPort);
 
-        WebDriver seleniumDriver = connectSelenium(cdpPort, caps);
+        WebDriver seleniumDriver = connectSeleniumLocal(cdpPort, caps);
 
         Playwright playwright = Playwright.create();
         Browser playwrightBrowser = playwright.chromium().connectOverCDP("http://localhost:" + cdpPort);
@@ -85,7 +155,7 @@ public class HybridProvider implements HubProvider {
                 playwrightPage,
                 userDataDir);
 
-        logger.info("HybridSession started on CDP port {}", cdpPort);
+        logger.info("HybridSession started LOCAL on CDP port {}", cdpPort);
         return session;
     }
 
@@ -273,7 +343,8 @@ public class HybridProvider implements HubProvider {
         return getSelenium(session).getPageSource();
     }
 
-    // ==================== Screenshot (Playwright-based for higher quality) ====================
+    // ==================== Screenshot (Playwright-based for higher quality)
+    // ====================
 
     @Override
     public byte[] takeScreenshot(ProviderSession session) {
@@ -491,7 +562,7 @@ public class HybridProvider implements HubProvider {
         throw new HubTimeoutException("CDP did not become ready within " + CDP_READY_TIMEOUT_MS + "ms", null);
     }
 
-    private WebDriver connectSelenium(int cdpPort, SessionCapabilities caps) {
+    private WebDriver connectSeleniumLocal(int cdpPort, SessionCapabilities caps) {
         ChromeOptions options = new ChromeOptions();
         options.setExperimentalOption("debuggerAddress", "localhost:" + cdpPort);
         if (caps.getOptions() != null) {
@@ -546,6 +617,25 @@ public class HybridProvider implements HubProvider {
         return true; // Default: enabled
     }
 
+    protected WebDriver createRemoteWebDriver(String gridUrl, SessionCapabilities caps) throws MalformedURLException {
+        ChromeOptions options = new ChromeOptions();
+        if (caps.getOptions() != null) {
+            caps.getOptions().forEach(options::setCapability);
+        }
+        if (caps.isHeadless()) {
+            options.addArguments("--headless=new");
+        }
+        return new RemoteWebDriver(URI.create(gridUrl).toURL(), options);
+    }
+
+    protected Playwright createPlaywright() {
+        return Playwright.create();
+    }
+
+    protected Browser connectPlaywright(Playwright playwright, String cdpUrl) {
+        return playwright.chromium().connectOverCDP(cdpUrl);
+    }
+
     private String toPlaywrightSelector(HubLocator locator) {
         switch (locator.getStrategy()) {
             case CSS:
@@ -566,6 +656,29 @@ public class HybridProvider implements HubProvider {
                 return "text=" + locator.getValue();
             default:
                 throw new IllegalArgumentException("Unsupported Locator for Playwright: " + locator.getStrategy());
+        }
+    }
+
+    /**
+     * Replaces the host in the CDP URL with the host from the Grid URL.
+     * This is necessary when the Grid returns an internal IP (e.g. Docker container
+     * IP)
+     * that is not reachable from the client.
+     */
+    protected String sanitizeCdpUrl(String cdpUrl, String gridUrl) {
+        try {
+            URI cdpUri = new URI(cdpUrl);
+            URI gridUri = new URI(gridUrl);
+
+            if (gridUri.getHost().equals(cdpUri.getHost())) {
+                return cdpUrl;
+            }
+
+            return new URI(cdpUri.getScheme(), cdpUri.getUserInfo(), gridUri.getHost(),
+                    cdpUri.getPort(), cdpUri.getPath(), cdpUri.getQuery(), cdpUri.getFragment()).toString();
+        } catch (Exception e) {
+            logger.warn("Failed to sanitize CDP URL: {}. Using original.", cdpUrl, e);
+            return cdpUrl;
         }
     }
 }

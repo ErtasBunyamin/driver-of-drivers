@@ -68,7 +68,7 @@ public class SeleniumProvider implements HubProvider {
         }
     }
 
-    private WebDriver createDriver(SessionCapabilities caps, MutableCapabilities options) {
+    protected WebDriver createDriver(SessionCapabilities caps, MutableCapabilities options) {
         if (caps.getGridUrl() != null && !caps.getGridUrl().isEmpty()) {
             try {
                 return new RemoteWebDriver(URI.create(caps.getGridUrl()).toURL(), options);

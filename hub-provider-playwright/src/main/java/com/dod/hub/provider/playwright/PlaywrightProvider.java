@@ -47,9 +47,13 @@ public class PlaywrightProvider implements HubProvider {
         return "playwright";
     }
 
+    protected Playwright createPlaywright() {
+        return Playwright.create();
+    }
+
     @Override
     public ProviderSession start(SessionCapabilities caps) {
-        Playwright playwright = Playwright.create();
+        Playwright playwright = createPlaywright();
         BrowserType.LaunchOptions options = new BrowserType.LaunchOptions();
         options.setHeadless(caps.isHeadless());
 
@@ -341,7 +345,7 @@ public class PlaywrightProvider implements HubProvider {
         List<Cookie> cookies = getCtx(session).context.cookies();
         Set<Map<String, Object>> result = new HashSet<>();
         for (Cookie cookie : cookies) {
-           Map<String, Object> map = new HashMap<>();
+            Map<String, Object> map = new HashMap<>();
             map.put("name", cookie.name);
             map.put("value", cookie.value);
             map.put("domain", cookie.domain);

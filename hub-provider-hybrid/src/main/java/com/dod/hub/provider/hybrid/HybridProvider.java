@@ -10,11 +10,11 @@ import com.dod.hub.core.provider.SessionCapabilities;
 import com.dod.hub.core.exception.HubTimeoutException;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.BrowserContext.WaitForPageOptions;
-import com.microsoft.playwright.options.WaitForSelectorState;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Cookie;
 import org.openqa.selenium.Dimension;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.NoAlertPresentException;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.Point;
 import org.openqa.selenium.TimeoutException;
@@ -66,6 +66,7 @@ public class HybridProvider implements HubProvider {
     private static final int DEFAULT_CDP_PORT = 9222;
     private static final int CDP_READY_TIMEOUT_MS = 10000;
     private static final int CDP_POLL_INTERVAL_MS = 200;
+    private static final int FRAME_SYNC_TIMEOUT_MS = 2000;
 
     @Override
     public String getName() {
@@ -128,7 +129,7 @@ public class HybridProvider implements HubProvider {
 
         Page playwrightPage = playwrightBrowser.contexts().get(0).pages().get(0);
 
-        return new HybridSession(
+        HybridSession session = new HybridSession(
                 getName(),
                 caps,
                 null, // No local process
@@ -138,6 +139,8 @@ public class HybridProvider implements HubProvider {
                 playwrightPage,
                 null, // No local user data dir
                 cdpUrl);
+        registerDialogHandler(session);
+        return session;
     }
 
     private ProviderSession startLocal(SessionCapabilities caps) {
@@ -166,6 +169,7 @@ public class HybridProvider implements HubProvider {
                 playwrightPage,
                 userDataDir,
                 cdpUrl);
+        registerDialogHandler(session);
 
         logger.info("HybridSession started LOCAL on CDP port {}", cdpPort);
         return session;
@@ -225,12 +229,12 @@ public class HybridProvider implements HubProvider {
 
         boolean usePlaywrightWait = resolveUsePlaywrightWait(hybrid.getCapabilities());
 
-        if (usePlaywrightWait) {
+        if (usePlaywrightWait && !hybrid.hasPendingDialog() && !isAlertPresent(hybrid.getSeleniumDriver())) {
             Frame frame = hybrid.getActivePlaywrightFrame();
             String selector = toPlaywrightSelector(locator);
             try {
                 Locator loc = frame.locator(selector).first();
-                loc.waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE));
+                loc.waitFor();
             } catch (TimeoutError e) {
                 throw new HubTimeoutException("Playwright auto-wait timed out for: " + locator, e);
             }
@@ -364,16 +368,25 @@ public class HybridProvider implements HubProvider {
 
     @Override
     public void acceptAlert(ProviderSession session) {
-        executeSelenium((HybridSession) session, () -> getSelenium(session).switchTo().alert().accept());
+        HybridSession hybrid = (HybridSession) session;
+        executeSelenium(hybrid, () -> getSelenium(session).switchTo().alert().accept());
+        hybrid.clearPendingDialog();
     }
 
     @Override
     public void dismissAlert(ProviderSession session) {
-        executeSelenium((HybridSession) session, () -> getSelenium(session).switchTo().alert().dismiss());
+        HybridSession hybrid = (HybridSession) session;
+        executeSelenium(hybrid, () -> getSelenium(session).switchTo().alert().dismiss());
+        hybrid.clearPendingDialog();
     }
 
     @Override
     public String getAlertText(ProviderSession session) {
+        HybridSession hybrid = (HybridSession) session;
+        String pending = hybrid.getPendingDialogMessage();
+        if (pending != null) {
+            return pending;
+        }
         return getSelenium(session).switchTo().alert().getText();
     }
 
@@ -392,14 +405,12 @@ public class HybridProvider implements HubProvider {
         hybrid.getSeleniumDriver().switchTo().frame(index);
 
         // 2. Switch Playwright
-        // Selenium's frame(0) corresponds to the first frame in the *current* context.
-        Frame current = hybrid.getActivePlaywrightFrame();
-        if (index < 0 || index >= current.childFrames().size()) {
-            // If mismatch, try to sync or fail.
-            // Ideally we trust Selenium succeeded, so we must find it in Playwright.
-            throw new HubException("Frame index " + index + " out of bounds in Playwright context.");
+        // Selenium's frame(0) corresponds to the first frame in the current context.
+        Frame target = resolveFrameByIndex(hybrid, index);
+        if (target == null) {
+            throw new HubTimeoutException("Timed out waiting for Playwright frame index: " + index, null);
         }
-        hybrid.setActivePlaywrightFrame(current.childFrames().get(index));
+        hybrid.setActivePlaywrightFrame(target);
     }
 
     @Override
@@ -410,37 +421,12 @@ public class HybridProvider implements HubProvider {
         hybrid.getSeleniumDriver().switchTo().frame(nameOrId);
 
         // 2. Switch Playwright
-        Frame current = hybrid.getActivePlaywrightFrame();
-        Frame target = current.childFrames().stream()
-                .filter(f -> nameOrId.equals(f.name()))
-                .findFirst()
-                .orElse(null);
-
-        if (target == null) {
-            // Try ID strategy? Playwright doesn't index by ID natively on the frame object
-            // easily.
-            // We might need to find the element by ID and get its content frame.
-            try {
-                ElementHandle handle = current.querySelector("#" + nameOrId);
-                if (handle != null) {
-                    target = handle.contentFrame();
-                }
-                if (target == null) {
-                    handle = current.querySelector("[name='" + nameOrId + "']");
-                    if (handle != null) {
-                        target = handle.contentFrame();
-                    }
-                }
-            } catch (Exception e) {
-                logger.warn("Failed to find frame by ID/Name in Playwright: " + nameOrId, e);
-            }
-        }
+        Frame target = resolveFrameByNameOrId(hybrid, nameOrId);
 
         if (target != null) {
             hybrid.setActivePlaywrightFrame(target);
         } else {
-            logger.warn("Switched Selenium to frame '{}' but could not resolve in Playwright. Auto-wait may fail.",
-                    nameOrId);
+            throw new HubTimeoutException("Timed out waiting for Playwright frame name/id: " + nameOrId, null);
         }
     }
 
@@ -457,14 +443,11 @@ public class HybridProvider implements HubProvider {
         // HubElementRef holds the locator.
         HubLocator locator = frameElement.getLocator();
         if (locator != null) {
-            Frame current = hybrid.getActivePlaywrightFrame();
-            String selector = toPlaywrightSelector(locator);
-            Locator loc = current.locator(selector).first();
-            ElementHandle handle = loc.elementHandle();
-            if (handle != null && handle.contentFrame() != null) {
-                hybrid.setActivePlaywrightFrame(handle.contentFrame());
+            Frame target = resolveFrameByLocator(hybrid, locator);
+            if (target != null) {
+                hybrid.setActivePlaywrightFrame(target);
             } else {
-                logger.warn("Could not handle contentFrame for element: {}", locator);
+                throw new HubTimeoutException("Timed out waiting for Playwright frame element: " + locator, null);
             }
         } else {
             logger.warn("Frame element ref missing locator, cannot sync Playwright state.");
@@ -938,9 +921,7 @@ public class HybridProvider implements HubProvider {
             Page foundPage = null;
             int pagesCount = browser.contexts().get(0).pages().size();
             waitForPlaywrightPage(hybrid);
-            if (pagesCount == browser.contexts().get(0).pages().size()) {
-                return;
-            }
+            boolean pagesChanged = pagesCount != browser.contexts().get(0).pages().size();
             searchLoop: for (BrowserContext ctx : browser.contexts()) {
                 for (Page p : ctx.pages()) {
                     try {
@@ -965,6 +946,9 @@ public class HybridProvider implements HubProvider {
                 logger.debug("Synced Playwright window via marker: {}", syncId);
                 return;
             }
+            if (!pagesChanged) {
+                return;
+            }
             List<Page> pages = browser.contexts().get(0).pages();
             if (!pages.isEmpty()) {
                 Page last = pages.get(pages.size() - 1);
@@ -985,7 +969,27 @@ public class HybridProvider implements HubProvider {
             browser.contexts().get(0).waitForPage(options, () -> {
                 /* Wait for all pages to be ready */});
         } catch (Exception e) {
-            logger.warn("Failed to wait for Playwright window in Hybrid mode", e);
+            logger.debug("Failed to wait for Playwright window in Hybrid mode", e);
+        }
+    }
+
+    private void registerDialogHandler(HybridSession session) {
+        try {
+            BrowserContext ctx = session.getPlaywrightBrowser().contexts().get(0);
+            ctx.onDialog(dialog -> {
+                Page active = session.getPlaywrightPage();
+                if (active != null && dialog.page() == active) {
+                    session.setPendingDialog(dialog);
+                } else {
+                    try {
+                        dialog.dismiss();
+                    } catch (Exception e) {
+                        logger.debug("Failed to dismiss non-active dialog", e);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to register Playwright dialog handler", e);
         }
     }
 
@@ -993,7 +997,13 @@ public class HybridProvider implements HubProvider {
         try {
             action.run();
         } finally {
-            syncPlaywrightWindow(session);
+            boolean alertPresent = isAlertPresent(session.getSeleniumDriver());
+            if (!alertPresent && session.hasPendingDialog()) {
+                session.clearPendingDialog();
+            }
+            if (!alertPresent) {
+                syncPlaywrightWindow(session);
+            }
         }
     }
 
@@ -1001,7 +1011,13 @@ public class HybridProvider implements HubProvider {
         try {
             return action.get();
         } finally {
-            syncPlaywrightWindow(session);
+            boolean alertPresent = isAlertPresent(session.getSeleniumDriver());
+            if (!alertPresent && session.hasPendingDialog()) {
+                session.clearPendingDialog();
+            }
+            if (!alertPresent) {
+                syncPlaywrightWindow(session);
+            }
         }
     }
 
@@ -1020,5 +1036,66 @@ public class HybridProvider implements HubProvider {
         } catch (Exception e) {
             logger.warn("Failed to sync Playwright viewport", e);
         }
+    }
+
+    private boolean isAlertPresent(WebDriver driver) {
+        try {
+            driver.switchTo().alert();
+            return true;
+        } catch (NoAlertPresentException e) {
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private Frame resolveFrameByIndex(HybridSession hybrid, int index) {
+        Frame current = hybrid.getActivePlaywrightFrame();
+        Locator loc = current.locator("iframe,frame").nth(index);
+        return waitForContentFrame(loc, "index=" + index);
+    }
+
+    private Frame resolveFrameByNameOrId(HybridSession hybrid, String nameOrId) {
+        Frame current = hybrid.getActivePlaywrightFrame();
+        String safe = escapeCssAttr(nameOrId);
+        String selector = "iframe[id=\"" + safe + "\"], frame[id=\"" + safe + "\"], " +
+                "iframe[name=\"" + safe + "\"], frame[name=\"" + safe + "\"]";
+        Locator loc = current.locator(selector).first();
+        return waitForContentFrame(loc, "nameOrId=" + nameOrId);
+    }
+
+    private Frame resolveFrameByLocator(HybridSession hybrid, HubLocator locator) {
+        Frame current = hybrid.getActivePlaywrightFrame();
+        Locator loc = current.locator(toPlaywrightSelector(locator)).first();
+        return waitForContentFrame(loc, "locator=" + locator);
+    }
+
+    private Frame waitForContentFrame(Locator locator, String targetLabel) {
+        long deadline = System.currentTimeMillis() + FRAME_SYNC_TIMEOUT_MS;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                ElementHandle handle = locator.elementHandle();
+                if (handle != null) {
+                    Frame frame = handle.contentFrame();
+                    if (frame != null) {
+                        return frame;
+                    }
+                }
+            } catch (Exception e) {
+                logger.debug("Frame lookup retry failed for {}: {}", targetLabel, e.getMessage());
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        logger.warn("Timed out waiting for Playwright contentFrame: {}", targetLabel);
+        return null;
+    }
+
+    private String escapeCssAttr(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

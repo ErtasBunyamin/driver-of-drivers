@@ -7,9 +7,12 @@ import com.dod.hub.facade.HubWebDriver;
 import com.dod.hub.starter.context.HubContext;
 import io.cucumber.java.After;
 import io.cucumber.java.Before;
+import io.cucumber.java.Scenario;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import org.testng.Assert;
+
+import java.util.Collection;
 
 public class StepDefinitions {
 
@@ -24,10 +27,19 @@ public class StepDefinitions {
     private HubWebDriver driver;
 
     @Before
-    public void setup() {
+    public void setup(Scenario scenario) {
+        Collection<String> tagNames = scenario.getSourceTagNames();
         HubConfig config = new HubConfig();
-        config.setProvider(HubProviderType.PLAYWRIGHT);
-        config.setHeadless(true);
+        if(tagNames.contains("@Playwright")) {
+            config.setProvider(HubProviderType.PLAYWRIGHT);
+        } else if(tagNames.contains("@Selenium")) {
+            config.setProvider(HubProviderType.SELENIUM);
+        } else if(tagNames.contains("@Hybrid")) {
+            config.setProvider(HubProviderType.HYBRID);
+        } else {
+            throw new RuntimeException("Unknown Hub Provider Type");
+        }
+        config.setHeadless(false);
         driver = HubFactory.create(config);
 
         // Optional: Set Context if we wanted to use HubSpringFactory

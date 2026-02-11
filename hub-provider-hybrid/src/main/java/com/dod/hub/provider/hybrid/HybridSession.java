@@ -3,6 +3,7 @@ package com.dod.hub.provider.hybrid;
 import com.dod.hub.core.provider.ProviderSession;
 import com.dod.hub.core.provider.SessionCapabilities;
 import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.Dialog;
 import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
@@ -30,6 +31,8 @@ public class HybridSession extends ProviderSession {
 
     // Track the active frame for Playwright operations
     private Frame activePlaywrightFrame;
+    private volatile Dialog pendingDialog;
+    private volatile String pendingDialogMessage;
 
     /**
      * Constructs a new HybridSession.
@@ -126,10 +129,28 @@ public class HybridSession extends ProviderSession {
     /**
      * Sets the active Playwright Frame.
      *
-     * @param frame The new active frame.
+     * @param activePlaywrightFrame The new active frame.
      */
     public void setActivePlaywrightFrame(Frame activePlaywrightFrame) {
         this.activePlaywrightFrame = activePlaywrightFrame;
+    }
+
+    public void setPendingDialog(Dialog dialog) {
+        this.pendingDialog = dialog;
+        this.pendingDialogMessage = dialog == null ? null : dialog.message();
+    }
+
+    public boolean hasPendingDialog() {
+        return pendingDialog != null;
+    }
+
+    public String getPendingDialogMessage() {
+        return pendingDialogMessage;
+    }
+
+    public void clearPendingDialog() {
+        this.pendingDialog = null;
+        this.pendingDialogMessage = null;
     }
 
     /**

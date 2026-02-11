@@ -3,17 +3,19 @@ package com.dod.hub.provider.hybrid;
 import com.dod.hub.core.provider.ProviderSession;
 import com.dod.hub.core.provider.SessionCapabilities;
 import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import org.openqa.selenium.WebDriver;
-
 import java.nio.file.Path;
 
 /**
- * A specialized session that holds references to both Selenium and Playwright driver instances,
+ * A specialized session that holds references to both Selenium and Playwright
+ * driver instances,
  * connected to the same browser via Chrome DevTools Protocol (CDP).
  * <p>
- * This session enables hybrid automation strategies where each framework can be used
+ * This session enables hybrid automation strategies where each framework can be
+ * used
  * for operations where it excels.
  */
 public class HybridSession extends ProviderSession {
@@ -22,8 +24,12 @@ public class HybridSession extends ProviderSession {
     private final WebDriver seleniumDriver;
     private final Playwright playwright;
     private final Browser playwrightBrowser;
-    private final Page playwrightPage;
+    private Page playwrightPage;
     private final Path userDataDir;
+    private final String cdpUrl;
+
+    // Track the active frame for Playwright operations
+    private Frame activePlaywrightFrame;
 
     /**
      * Constructs a new HybridSession.
@@ -35,7 +41,9 @@ public class HybridSession extends ProviderSession {
      * @param playwright        The Playwright instance.
      * @param playwrightBrowser The Playwright Browser connected via CDP.
      * @param playwrightPage    The active Playwright Page.
-     * @param userDataDir       The temporary user data directory for the browser profile.
+     * @param userDataDir       The temporary user data directory for the browser
+     *                          profile.
+     * @param cdpUrl            The CDP URL used to connect Playwright.
      */
     public HybridSession(
             String providerName,
@@ -45,8 +53,8 @@ public class HybridSession extends ProviderSession {
             Playwright playwright,
             Browser playwrightBrowser,
             Page playwrightPage,
-            Path userDataDir
-    ) {
+            Path userDataDir,
+            String cdpUrl) {
         super(providerName, caps, new DualDriverHandle(seleniumDriver, playwrightPage));
         this.browserProcess = browserProcess;
         this.seleniumDriver = seleniumDriver;
@@ -54,6 +62,8 @@ public class HybridSession extends ProviderSession {
         this.playwrightBrowser = playwrightBrowser;
         this.playwrightPage = playwrightPage;
         this.userDataDir = userDataDir;
+        this.cdpUrl = cdpUrl;
+        this.activePlaywrightFrame = playwrightPage.mainFrame();
     }
 
     /**
@@ -93,6 +103,36 @@ public class HybridSession extends ProviderSession {
     }
 
     /**
+     * Sets the active Playwright Page (during window switching).
+     */
+    public void setPlaywrightPage(Page page) {
+        this.playwrightPage = page;
+        if (page != null) {
+            this.activePlaywrightFrame = page.mainFrame();
+        }
+    }
+
+    /**
+     * Returns the currently active Playwright Frame.
+     * Use this instead of getPlaywrightPage() for element searches to support frame
+     * switching.
+     *
+     * @return The active Frame (or main frame).
+     */
+    public Frame getActivePlaywrightFrame() {
+        return activePlaywrightFrame;
+    }
+
+    /**
+     * Sets the active Playwright Frame.
+     *
+     * @param frame The new active frame.
+     */
+    public void setActivePlaywrightFrame(Frame activePlaywrightFrame) {
+        this.activePlaywrightFrame = activePlaywrightFrame;
+    }
+
+    /**
      * Returns the browser OS process.
      *
      * @return The Process running the browser.
@@ -111,15 +151,25 @@ public class HybridSession extends ProviderSession {
     }
 
     /**
-     * Returns a wrapper providing access to advanced Playwright-specific capabilities.
+     * Returns the CDP URL used for the connection.
+     *
+     * @return The CDP URL string.
+     */
+    public String getCdpUrl() {
+        return cdpUrl;
+    }
+
+    /**
+     * Returns a wrapper providing access to advanced Playwright-specific
+     * capabilities.
      * <p>
      * Use this to access features like:
      * <ul>
-     *   <li>Network interception and mocking</li>
-     *   <li>Auto-wait utilities</li>
-     *   <li>Tracing and video recording</li>
-     *   <li>Dialog handling</li>
-     *   <li>Console logging</li>
+     * <li>Network interception and mocking</li>
+     * <li>Auto-wait utilities</li>
+     * <li>Tracing and video recording</li>
+     * <li>Dialog handling</li>
+     * <li>Console logging</li>
      * </ul>
      *
      * @return The PlaywrightCapabilities wrapper.

@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -33,12 +34,38 @@ public class PlaywrightProvider implements HubProvider {
         Browser browser;
         BrowserContext context;
         Page page;
+        Map<String, Page> handleMap = new HashMap<>();
 
         PlaywrightSessionContext(Playwright playwright, Browser browser, BrowserContext context, Page page) {
             this.playwright = playwright;
             this.browser = browser;
             this.context = context;
             this.page = page;
+            registerPage(page);
+
+            // Automatically register new pages (popups, target="_blank", etc.)
+            context.onPage(p -> registerPage(p));
+        }
+
+        String registerPage(Page p) {
+            // Check if page is already registered
+            for (Map.Entry<String, Page> entry : handleMap.entrySet()) {
+                if (entry.getValue() == p) {
+                    return entry.getKey();
+                }
+            }
+            String handle = UUID.randomUUID().toString().toUpperCase().replace("-", "");
+            handleMap.put(handle, p);
+            return handle;
+        }
+
+        String getHandle(Page p) {
+            for (Map.Entry<String, Page> entry : handleMap.entrySet()) {
+                if (entry.getValue() == p) {
+                    return entry.getKey();
+                }
+            }
+            return registerPage(p);
         }
     }
 
@@ -419,5 +446,47 @@ public class PlaywrightProvider implements HubProvider {
     @Override
     public void minimizeWindow(ProviderSession session) {
         throw new UnsupportedOperationException("minimizeWindow is not supported in Playwright");
+    }
+
+    @Override
+    public String getWindowHandle(ProviderSession session) {
+        PlaywrightSessionContext ctx = getCtx(session);
+        return ctx.getHandle(ctx.page);
+    }
+
+    @Override
+    public Set<String> getWindowHandles(ProviderSession session) {
+        PlaywrightSessionContext ctx = getCtx(session);
+        // Refresh handles (remove closed pages)
+        ctx.handleMap.values().removeIf(Page::isClosed);
+        return new HashSet<>(ctx.handleMap.keySet());
+    }
+
+    @Override
+    public void switchToWindow(ProviderSession session, String nameOrHandle) {
+        PlaywrightSessionContext ctx = getCtx(session);
+        Page p = ctx.handleMap.get(nameOrHandle);
+        if (p != null) {
+            ctx.page = p;
+            p.bringToFront();
+        } else {
+            // Fallback: search by title
+            for (Page page : ctx.context.pages()) {
+                if (nameOrHandle.equals(page.title())) {
+                    ctx.page = page;
+                    page.bringToFront();
+                    return;
+                }
+            }
+            throw new com.dod.hub.core.exception.HubException("No window found with handle or title: " + nameOrHandle);
+        }
+    }
+
+    @Override
+    public void switchToNewWindow(ProviderSession session, com.dod.hub.core.provider.HubWindowType typeHint) {
+        PlaywrightSessionContext ctx = getCtx(session);
+        Page newPage = ctx.context.newPage();
+        ctx.page = newPage;
+        newPage.bringToFront();
     }
 }

@@ -29,6 +29,112 @@ public interface HubProvider {
      */
     void stop(ProviderSession session);
 
+    // ==================== Frame Switching ====================
+
+    /**
+     * Switch to a frame by index.
+     *
+     * @param session The active provider session.
+     * @param index   The zero-based index of the frame.
+     */
+    default void switchToFrame(ProviderSession session, int index) {
+        throw new UnsupportedOperationException("Frame switching by index is not supported by this provider.");
+    }
+
+    /**
+     * Switch to a frame by name or ID.
+     *
+     * @param session  The active provider session.
+     * @param nameOrId The name or ID of the frame.
+     */
+    default void switchToFrame(ProviderSession session, String nameOrId) {
+        throw new UnsupportedOperationException("Frame switching by name/ID is not supported by this provider.");
+    }
+
+    /**
+     * Switch to a frame using a previously found element reference.
+     *
+     * @param session      The active provider session.
+     * @param frameElement The element reference of the frame/iframe.
+     */
+    default void switchToFrame(ProviderSession session, HubElementRef frameElement) {
+        throw new UnsupportedOperationException("Frame switching by element is not supported by this provider.");
+    }
+
+    /**
+     * Switch to the parent frame.
+     *
+     * @param session The active provider session.
+     */
+    default void switchToParentFrame(ProviderSession session) {
+        throw new UnsupportedOperationException("Switching to parent frame is not supported by this provider.");
+    }
+
+    /**
+     * Switch to the top-level default content.
+     *
+     * @param session The active provider session.
+     */
+    default void switchToDefaultContent(ProviderSession session) {
+        throw new UnsupportedOperationException("Switching to default content is not supported by this provider.");
+    }
+
+    /**
+     * Switches to the currently active element (e.g. focused input).
+     */
+    default HubElementRef getActiveElement(ProviderSession session) {
+        throw new UnsupportedOperationException("getActiveElement is not supported by this provider.");
+    }
+
+    /**
+     * Switches to a specific window/tab.
+     *
+     * @param session      The active provider session.
+     * @param nameOrHandle The name or handle of the target window.
+     */
+    default void switchToWindow(ProviderSession session, String nameOrHandle) {
+        throw new UnsupportedOperationException("Window switching is not supported by this provider.");
+    }
+
+    /**
+     * Creates and switches to a new window/tab.
+     */
+    default void switchToNewWindow(ProviderSession session, HubWindowType typeHint) {
+        throw new UnsupportedOperationException("Creating new window is not supported by this provider.");
+    }
+
+    /**
+     * Retrieves the current window handle.
+     */
+    default String getWindowHandle(ProviderSession session) {
+        throw new UnsupportedOperationException("getWindowHandle is not supported by this provider.");
+    }
+
+    /**
+     * Retrieves all window handles.
+     */
+    default Set<String> getWindowHandles(ProviderSession session) {
+        throw new UnsupportedOperationException("getWindowHandles is not supported by this provider.");
+    }
+
+    // ==================== Alert Management ====================
+
+    default void acceptAlert(ProviderSession session) {
+        throw new UnsupportedOperationException("Alerts are not supported by this provider.");
+    }
+
+    default void dismissAlert(ProviderSession session) {
+        throw new UnsupportedOperationException("Alerts are not supported by this provider.");
+    }
+
+    default String getAlertText(ProviderSession session) {
+        throw new UnsupportedOperationException("Alerts are not supported by this provider.");
+    }
+
+    default void sendKeysToAlert(ProviderSession session, String text) {
+        throw new UnsupportedOperationException("Alerts are not supported by this provider.");
+    }
+
     /**
      * Finds a single element. Throws exception if not found.
      */

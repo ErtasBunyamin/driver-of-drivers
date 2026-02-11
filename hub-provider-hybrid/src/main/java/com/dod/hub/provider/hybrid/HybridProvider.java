@@ -3,11 +3,13 @@ package com.dod.hub.provider.hybrid;
 import com.dod.hub.core.exception.HubException;
 import com.dod.hub.core.locator.HubElementRef;
 import com.dod.hub.core.locator.HubLocator;
+import com.dod.hub.core.locator.LocatorStrategy;
 import com.dod.hub.core.provider.HubProvider;
 import com.dod.hub.core.provider.ProviderSession;
 import com.dod.hub.core.provider.SessionCapabilities;
 import com.dod.hub.core.exception.HubTimeoutException;
 import com.microsoft.playwright.*;
+import com.microsoft.playwright.BrowserContext.WaitForPageOptions;
 import com.microsoft.playwright.options.WaitForSelectorState;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Cookie;
@@ -18,6 +20,7 @@ import org.openqa.selenium.Point;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.WindowType;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -33,9 +36,12 @@ import java.net.MalformedURLException;
 import java.net.URI;
 
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -105,6 +111,9 @@ public class HybridProvider implements HubProvider {
 
         cdpUrl = sanitizeCdpUrl(cdpUrl, gridUrl);
 
+        // Resolve WebSocket URL from the HTTP endpoint
+        cdpUrl = resolveCdpWebSocketUrl(cdpUrl);
+
         logger.info("Connecting Playwright to Remote CDP: {}", cdpUrl);
 
         Playwright playwright = createPlaywright();
@@ -127,8 +136,8 @@ public class HybridProvider implements HubProvider {
                 playwright,
                 playwrightBrowser,
                 playwrightPage,
-                null // No local user data dir
-        );
+                null, // No local user data dir
+                cdpUrl);
     }
 
     private ProviderSession startLocal(SessionCapabilities caps) {
@@ -139,10 +148,12 @@ public class HybridProvider implements HubProvider {
 
         waitForCdpReady(cdpPort);
 
+        String cdpUrl = resolveCdpWebSocketUrl("http://localhost:" + cdpPort);
+
         WebDriver seleniumDriver = connectSeleniumLocal(cdpPort, caps);
 
         Playwright playwright = Playwright.create();
-        Browser playwrightBrowser = playwright.chromium().connectOverCDP("http://localhost:" + cdpPort);
+        Browser playwrightBrowser = playwright.chromium().connectOverCDP(cdpUrl);
         Page playwrightPage = playwrightBrowser.contexts().get(0).pages().get(0);
 
         HybridSession session = new HybridSession(
@@ -153,7 +164,8 @@ public class HybridProvider implements HubProvider {
                 playwright,
                 playwrightBrowser,
                 playwrightPage,
-                userDataDir);
+                userDataDir,
+                cdpUrl);
 
         logger.info("HybridSession started LOCAL on CDP port {}", cdpPort);
         return session;
@@ -214,10 +226,10 @@ public class HybridProvider implements HubProvider {
         boolean usePlaywrightWait = resolveUsePlaywrightWait(hybrid.getCapabilities());
 
         if (usePlaywrightWait) {
-            Page page = hybrid.getPlaywrightPage();
+            Frame frame = hybrid.getActivePlaywrightFrame();
             String selector = toPlaywrightSelector(locator);
             try {
-                Locator loc = page.locator(selector).first();
+                Locator loc = frame.locator(selector).first();
                 loc.waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE));
             } catch (TimeoutError e) {
                 throw new HubTimeoutException("Playwright auto-wait timed out for: " + locator, e);
@@ -268,17 +280,17 @@ public class HybridProvider implements HubProvider {
 
     @Override
     public void click(ProviderSession session, HubElementRef element) {
-        ((WebElement) element.getProviderHandle()).click();
+        executeSelenium((HybridSession) session, () -> ((WebElement) element.getProviderHandle()).click());
     }
 
     @Override
     public void type(ProviderSession session, HubElementRef element, String text) {
-        ((WebElement) element.getProviderHandle()).sendKeys(text);
+        executeSelenium((HybridSession) session, () -> ((WebElement) element.getProviderHandle()).sendKeys(text));
     }
 
     @Override
     public void clear(ProviderSession session, HubElementRef element) {
-        ((WebElement) element.getProviderHandle()).clear();
+        executeSelenium((HybridSession) session, () -> ((WebElement) element.getProviderHandle()).clear());
     }
 
     @Override
@@ -306,26 +318,207 @@ public class HybridProvider implements HubProvider {
         return ((WebElement) element.getProviderHandle()).isSelected();
     }
 
+    @Override
+    public HubElementRef getActiveElement(ProviderSession session) {
+        WebElement el = getSelenium(session).switchTo().activeElement();
+        // Since we don't know the locator strategy for active element, we use a special
+        // generic locator or just ID if available
+        // But HubElementRef requires a locator.
+        // We'll synthesise one or modify HubElementRef to allow null/unknown locator?
+        // Hublocator.CSS(":active") is a reasonable approximation for the "active"
+        // element concept.
+        return new HubElementRef(new HubLocator(LocatorStrategy.CSS, ":active"), el);
+    }
+
+    @Override
+    public void switchToWindow(ProviderSession session, String nameOrHandle) {
+        executeSelenium((HybridSession) session, () -> getSelenium(session).switchTo().window(nameOrHandle));
+    }
+
+    @Override
+    public void switchToNewWindow(ProviderSession session, com.dod.hub.core.provider.HubWindowType typeHint) {
+        HybridSession hybrid = (HybridSession) session;
+
+        WindowType seleniumType = (typeHint == com.dod.hub.core.provider.HubWindowType.TAB) ? WindowType.TAB
+                : WindowType.WINDOW;
+
+        // Use Playwright's native waitForPage to capture the new window immediately
+        hybrid.getPlaywrightBrowser().contexts().get(0).waitForPage(() -> {
+            hybrid.getSeleniumDriver().switchTo().newWindow(seleniumType);
+        });
+
+        syncPlaywrightWindow(hybrid);
+    }
+
+    @Override
+    public String getWindowHandle(ProviderSession session) {
+        return ((HybridSession) session).getSeleniumDriver().getWindowHandle();
+    }
+
+    @Override
+    public Set<String> getWindowHandles(ProviderSession session) {
+        return ((HybridSession) session).getSeleniumDriver().getWindowHandles();
+    }
+
+    // ==================== Alert Management ====================
+
+    @Override
+    public void acceptAlert(ProviderSession session) {
+        executeSelenium((HybridSession) session, () -> getSelenium(session).switchTo().alert().accept());
+    }
+
+    @Override
+    public void dismissAlert(ProviderSession session) {
+        executeSelenium((HybridSession) session, () -> getSelenium(session).switchTo().alert().dismiss());
+    }
+
+    @Override
+    public String getAlertText(ProviderSession session) {
+        return getSelenium(session).switchTo().alert().getText();
+    }
+
+    @Override
+    public void sendKeysToAlert(ProviderSession session, String text) {
+        executeSelenium((HybridSession) session, () -> getSelenium(session).switchTo().alert().sendKeys(text));
+    }
+
+    // ==================== Frame Switching ====================
+
+    @Override
+    public void switchToFrame(ProviderSession session, int index) {
+        HybridSession hybrid = (HybridSession) session;
+
+        // 1. Switch Selenium
+        hybrid.getSeleniumDriver().switchTo().frame(index);
+
+        // 2. Switch Playwright
+        // Selenium's frame(0) corresponds to the first frame in the *current* context.
+        Frame current = hybrid.getActivePlaywrightFrame();
+        if (index < 0 || index >= current.childFrames().size()) {
+            // If mismatch, try to sync or fail.
+            // Ideally we trust Selenium succeeded, so we must find it in Playwright.
+            throw new HubException("Frame index " + index + " out of bounds in Playwright context.");
+        }
+        hybrid.setActivePlaywrightFrame(current.childFrames().get(index));
+    }
+
+    @Override
+    public void switchToFrame(ProviderSession session, String nameOrId) {
+        HybridSession hybrid = (HybridSession) session;
+
+        // 1. Switch Selenium
+        hybrid.getSeleniumDriver().switchTo().frame(nameOrId);
+
+        // 2. Switch Playwright
+        Frame current = hybrid.getActivePlaywrightFrame();
+        Frame target = current.childFrames().stream()
+                .filter(f -> nameOrId.equals(f.name()))
+                .findFirst()
+                .orElse(null);
+
+        if (target == null) {
+            // Try ID strategy? Playwright doesn't index by ID natively on the frame object
+            // easily.
+            // We might need to find the element by ID and get its content frame.
+            try {
+                ElementHandle handle = current.querySelector("#" + nameOrId);
+                if (handle != null) {
+                    target = handle.contentFrame();
+                }
+                if (target == null) {
+                    handle = current.querySelector("[name='" + nameOrId + "']");
+                    if (handle != null) {
+                        target = handle.contentFrame();
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to find frame by ID/Name in Playwright: " + nameOrId, e);
+            }
+        }
+
+        if (target != null) {
+            hybrid.setActivePlaywrightFrame(target);
+        } else {
+            logger.warn("Switched Selenium to frame '{}' but could not resolve in Playwright. Auto-wait may fail.",
+                    nameOrId);
+        }
+    }
+
+    @Override
+    public void switchToFrame(ProviderSession session, HubElementRef frameElement) {
+        HybridSession hybrid = (HybridSession) session;
+        WebElement webElement = (WebElement) frameElement.getProviderHandle();
+
+        // 1. Switch Selenium
+        hybrid.getSeleniumDriver().switchTo().frame(webElement);
+
+        // 2. Switch Playwright
+        // We need to re-locate this element in Playwright to get the frame.
+        // HubElementRef holds the locator.
+        HubLocator locator = frameElement.getLocator();
+        if (locator != null) {
+            Frame current = hybrid.getActivePlaywrightFrame();
+            String selector = toPlaywrightSelector(locator);
+            Locator loc = current.locator(selector).first();
+            ElementHandle handle = loc.elementHandle();
+            if (handle != null && handle.contentFrame() != null) {
+                hybrid.setActivePlaywrightFrame(handle.contentFrame());
+            } else {
+                logger.warn("Could not handle contentFrame for element: {}", locator);
+            }
+        } else {
+            logger.warn("Frame element ref missing locator, cannot sync Playwright state.");
+        }
+    }
+
+    @Override
+    public void switchToParentFrame(ProviderSession session) {
+        HybridSession hybrid = (HybridSession) session;
+
+        // 1. Switch Selenium
+        hybrid.getSeleniumDriver().switchTo().parentFrame();
+
+        // 2. Switch Playwright
+        Frame current = hybrid.getActivePlaywrightFrame();
+        Frame parent = current.parentFrame();
+        if (parent != null) {
+            hybrid.setActivePlaywrightFrame(parent);
+        } else {
+            // Already at root?
+        }
+    }
+
+    @Override
+    public void switchToDefaultContent(ProviderSession session) {
+        HybridSession hybrid = (HybridSession) session;
+
+        // 1. Switch Selenium
+        hybrid.getSeleniumDriver().switchTo().defaultContent();
+
+        // 2. Switch Playwright
+        hybrid.setActivePlaywrightFrame(hybrid.getPlaywrightPage().mainFrame());
+    }
+
     // ==================== Navigation (Selenium-based) ====================
 
     @Override
     public void navigate(ProviderSession session, String url) {
-        getSelenium(session).get(url);
+        executeSelenium((HybridSession) session, () -> getSelenium(session).get(url));
     }
 
     @Override
     public void back(ProviderSession session) {
-        getSelenium(session).navigate().back();
+        executeSelenium((HybridSession) session, () -> getSelenium(session).navigate().back());
     }
 
     @Override
     public void forward(ProviderSession session) {
-        getSelenium(session).navigate().forward();
+        executeSelenium((HybridSession) session, () -> getSelenium(session).navigate().forward());
     }
 
     @Override
     public void refresh(ProviderSession session) {
-        getSelenium(session).navigate().refresh();
+        executeSelenium((HybridSession) session, () -> getSelenium(session).navigate().refresh());
     }
 
     @Override
@@ -383,22 +576,67 @@ public class HybridProvider implements HubProvider {
 
     @Override
     public void addCookie(ProviderSession session, String name, String value, String domain, String path) {
-        Cookie.Builder builder = new Cookie.Builder(name, value);
-        if (domain != null)
-            builder.domain(domain);
-        if (path != null)
-            builder.path(path);
-        getSelenium(session).manage().addCookie(builder.build());
+        executeSelenium((HybridSession) session, () -> {
+            Cookie.Builder builder = new Cookie.Builder(name, value);
+            if (domain != null)
+                builder.domain(domain);
+            if (path != null)
+                builder.path(path);
+            getSelenium(session).manage().addCookie(builder.build());
+        });
     }
 
     @Override
     public void deleteCookie(ProviderSession session, String name) {
-        getSelenium(session).manage().deleteCookieNamed(name);
+        executeSelenium((HybridSession) session, () -> getSelenium(session).manage().deleteCookieNamed(name));
     }
 
     @Override
     public void deleteAllCookies(ProviderSession session) {
-        getSelenium(session).manage().deleteAllCookies();
+        executeSelenium((HybridSession) session, () -> getSelenium(session).manage().deleteAllCookies());
+    }
+
+    // ==================== Window Management ====================
+
+    @Override
+    public void maximizeWindow(ProviderSession session) {
+        executeSelenium((HybridSession) session, () -> getSelenium(session).manage().window().maximize());
+    }
+
+    @Override
+    public void setWindowSize(ProviderSession session, int width, int height) {
+        executeSelenium((HybridSession) session, () -> {
+            getSelenium(session).manage().window().setSize(new Dimension(width, height));
+            syncPlaywrightViewport(session);
+        });
+    }
+
+    @Override
+    public int[] getWindowSize(ProviderSession session) {
+        Dimension size = getSelenium(session).manage().window().getSize();
+        return new int[] { size.getWidth(), size.getHeight() };
+    }
+
+    @Override
+    public int[] getWindowPosition(ProviderSession session) {
+        Point pos = getSelenium(session).manage().window().getPosition();
+        return new int[] { pos.getX(), pos.getY() };
+    }
+
+    @Override
+    public void setWindowPosition(ProviderSession session, int x, int y) {
+        executeSelenium((HybridSession) session,
+                () -> getSelenium(session).manage().window().setPosition(new Point(x, y)));
+    }
+
+    @Override
+    public void fullscreenWindow(ProviderSession session) {
+        executeSelenium((HybridSession) session, () -> getSelenium(session).manage().window().fullscreen());
+    }
+
+    @Override
+    public void minimizeWindow(ProviderSession session) {
+        executeSelenium((HybridSession) session, () -> getSelenium(session).manage().window().minimize());
     }
 
     @Override
@@ -433,45 +671,6 @@ public class HybridProvider implements HubProvider {
         map.put("secure", c.isSecure());
         map.put("httpOnly", c.isHttpOnly());
         return map;
-    }
-
-    // ==================== Window Management (Selenium-based) ====================
-
-    @Override
-    public void maximizeWindow(ProviderSession session) {
-        getSelenium(session).manage().window().maximize();
-    }
-
-    @Override
-    public void minimizeWindow(ProviderSession session) {
-        getSelenium(session).manage().window().minimize();
-    }
-
-    @Override
-    public void fullscreenWindow(ProviderSession session) {
-        getSelenium(session).manage().window().fullscreen();
-    }
-
-    @Override
-    public void setWindowSize(ProviderSession session, int width, int height) {
-        getSelenium(session).manage().window().setSize(new Dimension(width, height));
-    }
-
-    @Override
-    public int[] getWindowSize(ProviderSession session) {
-        Dimension size = getSelenium(session).manage().window().getSize();
-        return new int[] { size.getWidth(), size.getHeight() };
-    }
-
-    @Override
-    public void setWindowPosition(ProviderSession session, int x, int y) {
-        getSelenium(session).manage().window().setPosition(new Point(x, y));
-    }
-
-    @Override
-    public int[] getWindowPosition(ProviderSession session) {
-        Point pos = getSelenium(session).manage().window().getPosition();
-        return new int[] { pos.getX(), pos.getY() };
     }
 
     // ==================== Internal Helpers ====================
@@ -566,7 +765,10 @@ public class HybridProvider implements HubProvider {
         ChromeOptions options = new ChromeOptions();
         options.setExperimentalOption("debuggerAddress", "localhost:" + cdpPort);
         if (caps.getOptions() != null) {
-            caps.getOptions().forEach(options::setCapability);
+            caps.getOptions().entrySet().stream()
+                    .filter(e -> !e.getKey().startsWith("hybrid."))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))
+                    .forEach(options::setCapability);
         }
         return new ChromeDriver(options);
     }
@@ -679,6 +881,144 @@ public class HybridProvider implements HubProvider {
         } catch (Exception e) {
             logger.warn("Failed to sanitize CDP URL: {}. Using original.", cdpUrl, e);
             return cdpUrl;
+        }
+    }
+
+    /**
+     * Resolves the WebSocket Debugger URL from the CDP HTTP endpoint.
+     */
+    private String resolveCdpWebSocketUrl(String cdpHttpUrl) {
+        try {
+            // Check if it's already WS/WSS
+            if (cdpHttpUrl.startsWith("ws://") || cdpHttpUrl.startsWith("wss://")) {
+                return cdpHttpUrl;
+            }
+
+            // Normalize HTTP URL
+            String jsonUrl = cdpHttpUrl.endsWith("/") ? cdpHttpUrl + "json/version" : cdpHttpUrl + "/json/version";
+            // If the input was just host:port without scheme, assume http
+            if (!jsonUrl.startsWith("http")) {
+                jsonUrl = "http://" + jsonUrl;
+            }
+
+            URL url = new URI(jsonUrl).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+
+            if (conn.getResponseCode() == 200) {
+                try (java.io.InputStream is = conn.getInputStream()) {
+                    String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                    Matcher m = Pattern.compile("\"webSocketDebuggerUrl\":\\s*\"(.*?)\"").matcher(json);
+                    if (m.find()) {
+                        return m.group(1);
+                    }
+                }
+            }
+            logger.warn("Failed to fetch/parse webSocketDebuggerUrl from {}. Response code: {}", jsonUrl,
+                    conn.getResponseCode());
+        } catch (Exception e) {
+            logger.warn("Error resolving CDP WebSocket URL from {}: {}", cdpHttpUrl, e.getMessage());
+        }
+        return cdpHttpUrl; // Fallback to original
+    }
+
+    private void syncPlaywrightWindow(HybridSession hybrid) {
+        try {
+            WebDriver selenium = hybrid.getSeleniumDriver();
+            String syncId = UUID.randomUUID().toString();
+
+            try {
+                ((JavascriptExecutor) selenium).executeScript("window.__dod_sync_id = '" + syncId + "';");
+            } catch (Exception e) {
+                logger.trace("Could not inject sync marker (likely transitioning): {}", e.getMessage());
+            }
+
+            Browser browser = hybrid.getPlaywrightBrowser();
+            Page foundPage = null;
+            int pagesCount = browser.contexts().get(0).pages().size();
+            waitForPlaywrightPage(hybrid);
+            if (pagesCount == browser.contexts().get(0).pages().size()) {
+                return;
+            }
+            searchLoop: for (BrowserContext ctx : browser.contexts()) {
+                for (Page p : ctx.pages()) {
+                    try {
+                        if (p.isClosed())
+                            continue;
+                        Object result = p.evaluate("window.__dod_sync_id");
+                        if (syncId.equals(result)) {
+                            foundPage = p;
+                            break searchLoop;
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            if (foundPage != null) {
+                hybrid.setPlaywrightPage(foundPage);
+                try {
+                    foundPage.evaluate("delete window.__dod_sync_id");
+                } catch (Exception ignored) {
+                }
+                logger.debug("Synced Playwright window via marker: {}", syncId);
+                return;
+            }
+            List<Page> pages = browser.contexts().get(0).pages();
+            if (!pages.isEmpty()) {
+                Page last = pages.get(pages.size() - 1);
+                hybrid.setPlaywrightPage(last);
+            }
+
+        } catch (Exception e) {
+            logger.warn("Failed to sync Playwright window in Hybrid mode", e);
+        }
+    }
+
+    private void waitForPlaywrightPage(HybridSession session) {
+        try {
+            Browser browser = session.getPlaywrightBrowser();
+            WaitForPageOptions options = new WaitForPageOptions();
+            options.setTimeout(1000);
+            options.setPredicate(p -> !p.url().isEmpty());
+            browser.contexts().get(0).waitForPage(options, () -> {
+                /* Wait for all pages to be ready */});
+        } catch (Exception e) {
+            logger.warn("Failed to wait for Playwright window in Hybrid mode", e);
+        }
+    }
+
+    private void executeSelenium(HybridSession session, Runnable action) {
+        try {
+            action.run();
+        } finally {
+            syncPlaywrightWindow(session);
+        }
+    }
+
+    private <T> T handleSeleniumResult(HybridSession session, java.util.function.Supplier<T> action) {
+        try {
+            return action.get();
+        } finally {
+            syncPlaywrightWindow(session);
+        }
+    }
+
+    private void syncPlaywrightViewport(ProviderSession session) {
+        try {
+            Dimension size = getSelenium(session).manage().window().getSize();
+            Thread.sleep(200);
+
+            Object widthObj = ((JavascriptExecutor) getSelenium(session)).executeScript("return window.innerWidth;");
+            Object heightObj = ((JavascriptExecutor) getSelenium(session)).executeScript("return window.innerHeight;");
+
+            int w = Integer.parseInt(widthObj.toString());
+            int h = Integer.parseInt(heightObj.toString());
+
+            getPlaywrightPage(session).setViewportSize(w, h);
+        } catch (Exception e) {
+            logger.warn("Failed to sync Playwright viewport", e);
         }
     }
 }

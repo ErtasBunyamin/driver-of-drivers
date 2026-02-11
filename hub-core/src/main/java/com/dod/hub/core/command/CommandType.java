@@ -14,6 +14,22 @@ public enum CommandType {
     NAV_FORWARD,
     NAV_REFRESH,
 
+    // Frame Components
+    SWITCH_TO_FRAME,
+    SWITCH_TO_PARENT_FRAME,
+    SWITCH_TO_DEFAULT_CONTENT,
+
+    // Window & Focus
+    SWITCH_TO_ACTIVE_ELEMENT,
+    SWITCH_TO_WINDOW,
+    SWITCH_TO_NEW_WINDOW,
+
+    // Alerts
+    ALERT_ACCEPT,
+    ALERT_DISMISS,
+    ALERT_GET_TEXT,
+    ALERT_SEND_KEYS,
+
     // Element Location
     FIND_ELEMENT,
     FIND_ELEMENTS,

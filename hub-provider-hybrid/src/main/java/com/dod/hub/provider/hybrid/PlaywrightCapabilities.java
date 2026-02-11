@@ -9,16 +9,20 @@ import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 /**
- * Exposes advanced Playwright-specific capabilities that are not available in standard WebDriver.
+ * Exposes advanced Playwright-specific capabilities that are not available in
+ * standard WebDriver.
  * <p>
- * Use this class to access Playwright's unique features while using the HybridProvider:
+ * Use this class to access Playwright's unique features while using the
+ * HybridProvider:
  * <ul>
- *   <li><strong>Auto-Wait</strong>: Smart waiting for elements to be actionable</li>
- *   <li><strong>Network Interception</strong>: Mock, modify, or block network requests</li>
- *   <li><strong>Tracing</strong>: Record traces for debugging and analysis</li>
- *   <li><strong>Video Recording</strong>: Capture test execution as video</li>
- *   <li><strong>Console Logging</strong>: Capture browser console output</li>
- *   <li><strong>Dialogs</strong>: Auto-handle JavaScript dialogs</li>
+ * <li><strong>Auto-Wait</strong>: Smart waiting for elements to be
+ * actionable</li>
+ * <li><strong>Network Interception</strong>: Mock, modify, or block network
+ * requests</li>
+ * <li><strong>Tracing</strong>: Record traces for debugging and analysis</li>
+ * <li><strong>Video Recording</strong>: Capture test execution as video</li>
+ * <li><strong>Console Logging</strong>: Capture browser console output</li>
+ * <li><strong>Dialogs</strong>: Auto-handle JavaScript dialogs</li>
  * </ul>
  */
 public class PlaywrightCapabilities {
@@ -36,7 +40,7 @@ public class PlaywrightCapabilities {
     /**
      * Waits for an element matching the selector to be visible.
      *
-     * @param selector CSS or XPath selector
+     * @param selector  CSS or XPath selector
      * @param timeoutMs Maximum wait time in milliseconds
      */
     public void waitForSelector(String selector, long timeoutMs) {
@@ -81,7 +85,7 @@ public class PlaywrightCapabilities {
      * Intercepts network requests matching a pattern and allows modification.
      *
      * @param urlPattern URL pattern to match (glob, regex, or predicate)
-     * @param handler Handler that processes the route
+     * @param handler    Handler that processes the route
      */
     public void interceptRequests(String urlPattern, Consumer<Route> handler) {
         page.route(urlPattern, handler::accept);
@@ -99,8 +103,8 @@ public class PlaywrightCapabilities {
     /**
      * Mocks a network request with a custom response.
      *
-     * @param urlPattern URL pattern to match
-     * @param body Response body to return
+     * @param urlPattern  URL pattern to match
+     * @param body        Response body to return
      * @param contentType Content-Type header value
      */
     public void mockRequest(String urlPattern, String body, String contentType) {
@@ -115,7 +119,7 @@ public class PlaywrightCapabilities {
      * Mocks a network request with JSON response.
      *
      * @param urlPattern URL pattern to match
-     * @param jsonBody JSON response body
+     * @param jsonBody   JSON response body
      */
     public void mockJsonRequest(String urlPattern, String jsonBody) {
         mockRequest(urlPattern, jsonBody, "application/json");
@@ -133,8 +137,7 @@ public class PlaywrightCapabilities {
                 new com.microsoft.playwright.Tracing.StartOptions()
                         .setName(name)
                         .setScreenshots(true)
-                        .setSnapshots(true)
-        );
+                        .setSnapshots(true));
     }
 
     /**
@@ -145,8 +148,7 @@ public class PlaywrightCapabilities {
     public void stopTracing(Path outputPath) {
         session.getPlaywrightBrowser().contexts().get(0).tracing().stop(
                 new com.microsoft.playwright.Tracing.StopOptions()
-                        .setPath(outputPath)
-        );
+                        .setPath(outputPath));
     }
 
     // ==================== Console & Errors ====================
@@ -218,10 +220,10 @@ public class PlaywrightCapabilities {
     /**
      * Emulates a specific device viewport and user agent.
      *
-     * @param width Viewport width
-     * @param height Viewport height
+     * @param width             Viewport width
+     * @param height            Viewport height
      * @param deviceScaleFactor Device scale factor
-     * @param isMobile Whether to emulate mobile
+     * @param isMobile          Whether to emulate mobile
      */
     public void emulateDevice(int width, int height, double deviceScaleFactor, boolean isMobile) {
         page.setViewportSize(width, height);
@@ -230,13 +232,12 @@ public class PlaywrightCapabilities {
     /**
      * Sets geolocation for the page.
      *
-     * @param latitude Latitude
+     * @param latitude  Latitude
      * @param longitude Longitude
      */
     public void setGeolocation(double latitude, double longitude) {
         session.getPlaywrightBrowser().contexts().get(0).setGeolocation(
-                new com.microsoft.playwright.options.Geolocation(latitude, longitude)
-        );
+                new com.microsoft.playwright.options.Geolocation(latitude, longitude));
     }
 
     /**
@@ -247,6 +248,25 @@ public class PlaywrightCapabilities {
      */
     public Object evaluate(String expression) {
         return page.evaluate(expression);
+    }
+
+    /**
+     * Evaluates a Selenium-style JavaScript script in the Playwright context.
+     * Automatically wraps the script to support 'arguments' and 'return'.
+     *
+     * @param script Selenium-style script (e.g. "return arguments[0].innerText;")
+     * @param args   Arguments to pass to the script
+     * @return Result of evaluation
+     */
+    public Object evaluateCompatible(String script, Object... args) {
+        String converted = SeleniumToPlaywrightScriptConverter.convert(script);
+        // Playwright evaluate expects args as a single object if there are multiple.
+        // If we wrapped it as 'arguments => { ... }', we pass 'args' as the argument.
+        if (args.length == 0) {
+            return page.evaluate(converted);
+        } else {
+            return page.evaluate(converted, args);
+        }
     }
 
     /**

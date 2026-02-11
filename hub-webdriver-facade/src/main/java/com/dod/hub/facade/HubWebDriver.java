@@ -7,6 +7,7 @@ import com.dod.hub.core.locator.HubLocator;
 import com.dod.hub.core.pipeline.CommandContext;
 import com.dod.hub.core.pipeline.CommandPipeline;
 import com.dod.hub.core.provider.HubProvider;
+import com.dod.hub.core.provider.HubWindowType;
 import com.dod.hub.core.provider.ProviderSession;
 import com.dod.hub.core.provider.SessionCapabilities;
 import org.openqa.selenium.*;
@@ -174,17 +175,141 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
 
     @Override
     public Set<String> getWindowHandles() {
-        return Set.of(getSession().getSessionId());
+        return provider.getWindowHandles(getSession());
     }
 
     @Override
     public String getWindowHandle() {
-        return getSession().getSessionId();
+        return provider.getWindowHandle(getSession());
     }
 
     @Override
     public TargetLocator switchTo() {
-        throw new UnsupportedOperationException("Window/Frame switching is not supported in the current version.");
+        return new TargetLocator() {
+            @Override
+            public WebDriver frame(int index) {
+                CommandContext context = ctx(CommandType.SWITCH_TO_FRAME, String.valueOf(index));
+                pipeline.execute(context, () -> {
+                    provider.switchToFrame(getSession(), index);
+                    return null;
+                });
+                return HubWebDriver.this;
+            }
+
+            @Override
+            public WebDriver frame(String nameOrId) {
+                CommandContext context = ctx(CommandType.SWITCH_TO_FRAME, nameOrId);
+                pipeline.execute(context, () -> {
+                    provider.switchToFrame(getSession(), nameOrId);
+                    return null;
+                });
+                return HubWebDriver.this;
+            }
+
+            @Override
+            public WebDriver frame(WebElement frameElement) {
+                if (!(frameElement instanceof HubWebElement)) {
+                    throw new IllegalArgumentException("Element must be a HubWebElement");
+                }
+                HubElementRef ref = ((HubWebElement) frameElement).getElementRef();
+                CommandContext context = ctx(CommandType.SWITCH_TO_FRAME, ref.getLocator().toString());
+                pipeline.execute(context, () -> {
+                    provider.switchToFrame(getSession(), ref);
+                    return null;
+                });
+                return HubWebDriver.this;
+            }
+
+            @Override
+            public WebDriver parentFrame() {
+                CommandContext context = ctx(CommandType.SWITCH_TO_PARENT_FRAME, HubCommand.TARGET_BROWSER);
+                pipeline.execute(context, () -> {
+                    provider.switchToParentFrame(getSession());
+                    return null;
+                });
+                return HubWebDriver.this;
+            }
+
+            @Override
+            public WebDriver defaultContent() {
+                CommandContext context = ctx(CommandType.SWITCH_TO_DEFAULT_CONTENT, HubCommand.TARGET_BROWSER);
+                pipeline.execute(context, () -> {
+                    provider.switchToDefaultContent(getSession());
+                    return null;
+                });
+                return HubWebDriver.this;
+            }
+
+            @Override
+            public WebElement activeElement() {
+                CommandContext context = ctx(CommandType.SWITCH_TO_ACTIVE_ELEMENT, HubCommand.TARGET_BROWSER);
+                return pipeline.execute(context, () -> {
+                    HubElementRef ref = provider.getActiveElement(getSession());
+                    return new HubWebElement(HubWebDriver.this, ref);
+                });
+            }
+
+            @Override
+            public Alert alert() {
+                return new Alert() {
+                    @Override
+                    public void dismiss() {
+                        CommandContext context = ctx(CommandType.ALERT_DISMISS, HubCommand.TARGET_BROWSER);
+                        pipeline.execute(context, () -> {
+                            provider.dismissAlert(getSession());
+                            return null;
+                        });
+                    }
+
+                    @Override
+                    public void accept() {
+                        CommandContext context = ctx(CommandType.ALERT_ACCEPT, HubCommand.TARGET_BROWSER);
+                        pipeline.execute(context, () -> {
+                            provider.acceptAlert(getSession());
+                            return null;
+                        });
+                    }
+
+                    @Override
+                    public String getText() {
+                        CommandContext context = ctx(CommandType.ALERT_GET_TEXT, HubCommand.TARGET_BROWSER);
+                        return pipeline.execute(context, () -> provider.getAlertText(getSession()));
+                    }
+
+                    @Override
+                    public void sendKeys(String keysToSend) {
+                        CommandContext context = ctx(CommandType.ALERT_SEND_KEYS, HubCommand.TARGET_BROWSER);
+                        pipeline.execute(context, () -> {
+                            provider.sendKeysToAlert(getSession(), keysToSend);
+                            return null;
+                        });
+                    }
+                };
+            }
+
+            @Override
+            public WebDriver window(String nameOrHandle) {
+                CommandContext context = ctx(CommandType.SWITCH_TO_WINDOW, nameOrHandle);
+                pipeline.execute(context, () -> {
+                    provider.switchToWindow(getSession(), nameOrHandle);
+                    return null;
+                });
+                return HubWebDriver.this;
+            }
+
+            @Override
+            public WebDriver newWindow(WindowType typeHint) {
+                // Map Selenium WindowType to HubWindowType
+                HubWindowType hubType = (typeHint == WindowType.TAB) ? HubWindowType.TAB : HubWindowType.WINDOW;
+
+                CommandContext context = ctx(CommandType.SWITCH_TO_NEW_WINDOW, typeHint.toString());
+                pipeline.execute(context, () -> {
+                    provider.switchToNewWindow(getSession(), hubType);
+                    return null;
+                });
+                return HubWebDriver.this;
+            }
+        };
     }
 
     @Override

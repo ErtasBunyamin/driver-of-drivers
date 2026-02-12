@@ -5,7 +5,7 @@
 
     <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-parent</artifactId>
-    <version>0.3.0</version>
+    <version>0.3.1</version>
     <packaging>pom</packaging>
 
     <name>Hub Automation Framework</name>
@@ -53,8 +53,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependencies -->
-        <selenium.version>4.16.1</selenium.version>
-        <playwright.version>1.40.0</playwright.version>
+        <selenium.version>4.25.0</selenium.version>
+        <playwright.version>1.58.0</playwright.version>
         <junit.version>5.10.1</junit.version>
         <assertj.version>3.24.2</assertj.version>
         <lombok.version>1.18.30</lombok.version>
@@ -100,6 +100,12 @@
             <dependency>
                 <groupId>org.seleniumhq.selenium</groupId>
                 <artifactId>selenium-java</artifactId>
+                <version>${selenium.version}</version>
+            </dependency>
+            <!-- Chrome DevTools Bindings -->
+            <dependency>
+                <groupId>org.seleniumhq.selenium</groupId>
+                <artifactId>selenium-devtools-v144</artifactId>
                 <version>${selenium.version}</version>
             </dependency>
 

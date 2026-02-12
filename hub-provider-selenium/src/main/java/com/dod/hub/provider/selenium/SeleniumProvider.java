@@ -9,8 +9,12 @@ import com.dod.hub.core.provider.SessionCapabilities;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.edge.EdgeDriver;
+import org.openqa.selenium.edge.EdgeOptions;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxOptions;
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.safari.SafariOptions;
 import com.dod.hub.core.exception.HubTimeoutException;
 import com.dod.hub.core.exception.HubException;
 import org.openqa.selenium.remote.RemoteWebDriver;
@@ -23,6 +27,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
+import com.dod.hub.core.locator.LocatorStrategy;
+import com.dod.hub.core.provider.HubWindowType;
 
 /**
  * Provides an implementation of the {@link HubProvider} using the Selenium
@@ -48,6 +54,19 @@ public class SeleniumProvider implements HubProvider {
                     fOptions.addArguments("-headless");
                 applyOptions(fOptions, caps.getOptions());
                 driver = createDriver(caps, fOptions);
+                break;
+            case EDGE:
+                EdgeOptions eOptions = new EdgeOptions();
+                if (caps.isHeadless())
+                    eOptions.addArguments("--headless=new");
+                applyOptions(eOptions, caps.getOptions());
+                driver = createDriver(caps, eOptions);
+                break;
+            case SAFARI:
+            case WEBKIT:
+                SafariOptions sOptions = new SafariOptions();
+                applyOptions(sOptions, caps.getOptions());
+                driver = createDriver(caps, sOptions);
                 break;
             case CHROME:
             default:
@@ -81,6 +100,10 @@ public class SeleniumProvider implements HubProvider {
             return new ChromeDriver((ChromeOptions) options);
         } else if (options instanceof FirefoxOptions) {
             return new FirefoxDriver((FirefoxOptions) options);
+        } else if (options instanceof EdgeOptions) {
+            return new EdgeDriver((EdgeOptions) options);
+        } else if (options instanceof SafariOptions) {
+            return new SafariDriver((SafariOptions) options);
         } else {
             throw new HubException("Unsupported options type for local execution: " + options.getClass().getName());
         }
@@ -92,6 +115,92 @@ public class SeleniumProvider implements HubProvider {
         if (driver != null) {
             driver.quit();
         }
+    }
+
+    @Override
+    public void closeWindow(ProviderSession session) {
+        WebDriver driver = (WebDriver) session.getRawDriver();
+        if (driver != null) {
+            driver.close();
+        }
+    }
+
+    // ==================== Frame Switching ====================
+
+    @Override
+    public void switchToFrame(ProviderSession session, int index) {
+        getDriver(session).switchTo().frame(index);
+    }
+
+    @Override
+    public void switchToFrame(ProviderSession session, String nameOrId) {
+        getDriver(session).switchTo().frame(nameOrId);
+    }
+
+    @Override
+    public void switchToFrame(ProviderSession session, HubElementRef frameElement) {
+        getDriver(session).switchTo().frame(getElement(frameElement));
+    }
+
+    @Override
+    public void switchToParentFrame(ProviderSession session) {
+        getDriver(session).switchTo().parentFrame();
+    }
+
+    @Override
+    public void switchToDefaultContent(ProviderSession session) {
+        getDriver(session).switchTo().defaultContent();
+    }
+
+    @Override
+    public HubElementRef getActiveElement(ProviderSession session) {
+        WebElement el = getDriver(session).switchTo().activeElement();
+        return new HubElementRef(new HubLocator(LocatorStrategy.CSS, ":focus"), el);
+    }
+
+    // ==================== Window Management ====================
+
+    @Override
+    public void switchToWindow(ProviderSession session, String nameOrHandle) {
+        getDriver(session).switchTo().window(nameOrHandle);
+    }
+
+    @Override
+    public void switchToNewWindow(ProviderSession session, HubWindowType typeHint) {
+        WindowType target = (typeHint == HubWindowType.TAB) ? WindowType.TAB : WindowType.WINDOW;
+        getDriver(session).switchTo().newWindow(target);
+    }
+
+    @Override
+    public String getWindowHandle(ProviderSession session) {
+        return getDriver(session).getWindowHandle();
+    }
+
+    @Override
+    public Set<String> getWindowHandles(ProviderSession session) {
+        return getDriver(session).getWindowHandles();
+    }
+
+    // ==================== Alert Management ====================
+
+    @Override
+    public void acceptAlert(ProviderSession session) {
+        getDriver(session).switchTo().alert().accept();
+    }
+
+    @Override
+    public void dismissAlert(ProviderSession session) {
+        getDriver(session).switchTo().alert().dismiss();
+    }
+
+    @Override
+    public String getAlertText(ProviderSession session) {
+        return getDriver(session).switchTo().alert().getText();
+    }
+
+    @Override
+    public void sendKeysToAlert(ProviderSession session, String text) {
+        getDriver(session).switchTo().alert().sendKeys(text);
     }
 
     private By toBy(HubLocator locator) {
@@ -260,6 +369,24 @@ public class SeleniumProvider implements HubProvider {
             manage.timeouts().implicitlyWait(Duration.ofMillis(implicitWaitMs));
         if (pageLoadMs > 0)
             manage.timeouts().pageLoadTimeout(Duration.ofMillis(pageLoadMs));
+        long scriptTimeoutMs = resolveScriptTimeoutMs(session);
+        if (scriptTimeoutMs > 0) {
+            manage.timeouts().setScriptTimeout(Duration.ofMillis(scriptTimeoutMs));
+        }
+    }
+
+    private long resolveScriptTimeoutMs(ProviderSession session) {
+        Object opt = session.getCapabilities().getOptions().get("hub.scriptTimeoutMs");
+        if (opt instanceof Number) {
+            return ((Number) opt).longValue();
+        }
+        if (opt instanceof String) {
+            try {
+                return Long.parseLong((String) opt);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0L;
     }
 
     // ==================== JavaScript Execution ====================

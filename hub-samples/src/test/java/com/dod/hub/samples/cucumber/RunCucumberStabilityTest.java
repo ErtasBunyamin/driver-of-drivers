@@ -12,6 +12,6 @@ import static io.cucumber.junit.platform.engine.Constants.PLUGIN_PROPERTY_NAME;
 @IncludeEngines("cucumber")
 @SelectClasspathResource("features")
 @ConfigurationParameter(key = PLUGIN_PROPERTY_NAME, value = "pretty")
-@ConfigurationParameter(key = FILTER_TAGS_PROPERTY_NAME, value = "not @Stability")
-public class RunCucumberTest {
+@ConfigurationParameter(key = FILTER_TAGS_PROPERTY_NAME, value = "@Stability")
+public class RunCucumberStabilityTest {
 }

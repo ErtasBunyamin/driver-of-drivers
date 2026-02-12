@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DOD Stability Lab</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 24px;
+      }
+      #panel {
+        border: 1px solid #cccccc;
+        padding: 16px;
+        max-width: 640px;
+      }
+      #status {
+        font-weight: bold;
+        margin: 8px 0;
+      }
+      #delayed {
+        display: none;
+        color: #0b6b0b;
+        margin-bottom: 8px;
+      }
+      #items {
+        margin-top: 12px;
+        padding-left: 18px;
+      }
+      #details {
+        margin-top: 12px;
+        padding: 8px;
+        background: #f5f5f5;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="page-title">Stability Lab</h1>
+    <p id="subtitle">Local test page for provider stability.</p>
+
+    <div id="panel">
+      <label for="item-input">Item</label>
+      <input id="item-input" type="text" />
+      <button id="add-btn" type="button">Add</button>
+      <button id="async-btn" type="button">Async Update</button>
+      <button id="toggle-btn" type="button">Toggle Details</button>
+
+      <div id="status" data-state="idle">IDLE</div>
+      <div id="delayed">DELAYED READY</div>
+
+      <ul id="items"></ul>
+
+      <div id="details">Details Panel</div>
+    </div>
+
+    <script>
+      (function () {
+        const input = document.getElementById("item-input");
+        const addBtn = document.getElementById("add-btn");
+        const asyncBtn = document.getElementById("async-btn");
+        const toggleBtn = document.getElementById("toggle-btn");
+        const status = document.getElementById("status");
+        const items = document.getElementById("items");
+        const details = document.getElementById("details");
+        const delayed = document.getElementById("delayed");
+
+        addBtn.addEventListener("click", () => {
+          const value = input.value.trim();
+          if (!value) {
+            return;
+          }
+          const li = document.createElement("li");
+          li.textContent = value;
+          items.appendChild(li);
+          input.value = "";
+        });
+
+        asyncBtn.addEventListener("click", () => {
+          status.textContent = "WORKING";
+          status.setAttribute("data-state", "working");
+          setTimeout(() => {
+            status.textContent = "READY";
+            status.setAttribute("data-state", "ready");
+          }, 300);
+        });
+
+        toggleBtn.addEventListener("click", () => {
+          details.hidden = !details.hidden;
+        });
+
+        setTimeout(() => {
+          delayed.style.display = "block";
+        }, 250);
+      })();
+    </script>
+  </body>
+</html>

@@ -14,7 +14,10 @@ import org.openqa.selenium.*;
 import org.openqa.selenium.logging.LogEntries;
 import org.openqa.selenium.logging.Logs;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Collections;
@@ -35,6 +38,7 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
 
     private long implicitWaitMs = 0;
     private long pageLoadTimeoutMs = 0;
+    private long scriptTimeoutMs = 0;
 
     public HubWebDriver(HubProvider provider, SessionCapabilities caps) {
         this.provider = provider;
@@ -67,6 +71,7 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
                 if (session == null) {
                     session = provider.start(caps);
                     provider.setTimeouts(session, implicitWaitMs, pageLoadTimeoutMs);
+                    applyScriptTimeout(session);
                 }
             }
         }
@@ -157,7 +162,14 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
 
     @Override
     public void close() {
-        quit();
+        if (session == null) {
+            return;
+        }
+        CommandContext context = ctx(CommandType.WINDOW_CLOSE, HubCommand.TARGET_BROWSER);
+        pipeline.execute(context, () -> {
+            provider.closeWindow(session);
+            return null;
+        });
     }
 
     @Override
@@ -457,12 +469,18 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
 
                     @Override
                     public Timeouts scriptTimeout(Duration duration) {
+                        scriptTimeoutMs = duration.toMillis();
+                        caps.addOption("hub.scriptTimeoutMs", scriptTimeoutMs);
+                        if (session != null) {
+                            applyScriptTimeout(session);
+                            provider.setTimeouts(session, implicitWaitMs, pageLoadTimeoutMs);
+                        }
                         return this;
                     }
 
                     @Override
                     public Timeouts setScriptTimeout(long time, TimeUnit unit) {
-                        return this;
+                        return scriptTimeout(Duration.ofMillis(unit.toMillis(time)));
                     }
                 };
             }
@@ -518,11 +536,27 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
                 return new Logs() {
                     @Override
                     public LogEntries get(String logType) {
+                        ProviderSession s = getSession();
+                        Object raw = s.getRawDriver();
+                        if (raw instanceof WebDriver) {
+                            try {
+                                return ((WebDriver) raw).manage().logs().get(logType);
+                            } catch (Exception ignored) {
+                            }
+                        }
                         return new LogEntries(Collections.emptyList());
                     }
 
                     @Override
                     public Set<String> getAvailableLogTypes() {
+                        ProviderSession s = getSession();
+                        Object raw = s.getRawDriver();
+                        if (raw instanceof WebDriver) {
+                            try {
+                                return ((WebDriver) raw).manage().logs().getAvailableLogTypes();
+                            } catch (Exception ignored) {
+                            }
+                        }
                         return Collections.emptySet();
                     }
                 };
@@ -540,7 +574,16 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
             return (X) bytes;
         if (target == OutputType.BASE64)
             return (X) Base64.getEncoder().encodeToString(bytes);
-        throw new UnsupportedOperationException("Only BYTES and BASE64 output types are supported.");
+        if (target == OutputType.FILE) {
+            try {
+                File file = File.createTempFile("hub-screenshot-", ".png");
+                Files.write(file.toPath(), bytes);
+                return (X) file;
+            } catch (IOException e) {
+                throw new WebDriverException("Failed to write screenshot to file", e);
+            }
+        }
+        throw new UnsupportedOperationException("Only BYTES, BASE64, and FILE output types are supported.");
     }
 
     @Override
@@ -553,5 +596,18 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
     public Object executeAsyncScript(String script, Object... args) {
         CommandContext context = ctx(CommandType.EXECUTE_ASYNC_SCRIPT, HubCommand.TARGET_BROWSER);
         return pipeline.execute(context, () -> provider.executeAsyncScript(getSession(), script, args));
+    }
+
+    private void applyScriptTimeout(ProviderSession s) {
+        if (scriptTimeoutMs <= 0) {
+            return;
+        }
+        Object raw = s.getRawDriver();
+        if (raw instanceof WebDriver) {
+            try {
+                ((WebDriver) raw).manage().timeouts().setScriptTimeout(Duration.ofMillis(scriptTimeoutMs));
+            } catch (Exception ignored) {
+            }
+        }
     }
 }

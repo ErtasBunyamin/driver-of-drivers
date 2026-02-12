@@ -98,7 +98,13 @@ public class HybridProvider implements HubProvider {
         }
 
         String cdpUrl = null;
-        if (seleniumDriver instanceof HasCapabilities) {
+        boolean cdpFromOptions = false;
+        if (caps.getOptions() != null && caps.getOptions().get("hybrid.cdp.url") != null) {
+            cdpUrl = caps.getOptions().get("hybrid.cdp.url").toString();
+            cdpFromOptions = true;
+        }
+
+        if (cdpUrl == null && seleniumDriver instanceof HasCapabilities) {
             Capabilities capabilities = ((HasCapabilities) seleniumDriver).getCapabilities();
             Object cdp = capabilities.getCapability("se:cdp");
             if (cdp != null) {
@@ -110,14 +116,17 @@ public class HybridProvider implements HubProvider {
 
         if (cdpUrl == null) {
             seleniumDriver.quit();
-            throw new HubException("Could not retrieve CDP endpoint (se:cdp) from RemoteWebDriver. " +
-                    "Ensure you are using Selenium Grid 4 which forwards CDP.");
+            throw new HubException("Could not retrieve CDP endpoint. Provide 'hybrid.cdp.url' or use Selenium Grid 4 with se:cdp.");
         }
 
-        cdpUrl = sanitizeCdpUrl(cdpUrl, gridUrl);
+        if (!cdpFromOptions) {
+            cdpUrl = sanitizeCdpUrl(cdpUrl, gridUrl);
+        }
 
-        // Resolve WebSocket URL from the HTTP endpoint
-        cdpUrl = resolveCdpWebSocketUrl(cdpUrl);
+        // Resolve WebSocket URL from the HTTP endpoint if needed
+        if (!cdpUrl.startsWith("ws://") && !cdpUrl.startsWith("wss://")) {
+            cdpUrl = resolveCdpWebSocketUrl(cdpUrl);
+        }
 
         logger.info("Connecting Playwright to Remote CDP: {}", cdpUrl);
 
@@ -235,6 +244,15 @@ public class HybridProvider implements HubProvider {
         }
 
         logger.info("HybridSession stopped");
+    }
+
+    @Override
+    public void closeWindow(ProviderSession session) {
+        if (!(session instanceof HybridSession)) {
+            throw new HubException("Expected HybridSession but got: " + session.getClass().getName());
+        }
+        HybridSession hybrid = (HybridSession) session;
+        executeSelenium(hybrid, () -> hybrid.getSeleniumDriver().close());
     }
 
     // ==================== Element Operations (Hybrid Strategy)
@@ -554,12 +572,30 @@ public class HybridProvider implements HubProvider {
             driver.manage().timeouts().implicitlyWait(java.time.Duration.ofMillis(implicitWaitMs));
         if (pageLoadMs > 0)
             driver.manage().timeouts().pageLoadTimeout(java.time.Duration.ofMillis(pageLoadMs));
+        long scriptTimeoutMs = resolveScriptTimeoutMs(session);
+        if (scriptTimeoutMs > 0) {
+            driver.manage().timeouts().setScriptTimeout(java.time.Duration.ofMillis(scriptTimeoutMs));
+        }
 
         Page page = getPlaywrightPage(session);
         if (implicitWaitMs > 0)
             page.setDefaultTimeout((double) implicitWaitMs);
         if (pageLoadMs > 0)
             page.setDefaultNavigationTimeout((double) pageLoadMs);
+    }
+
+    private long resolveScriptTimeoutMs(ProviderSession session) {
+        Object opt = session.getCapabilities().getOptions().get("hub.scriptTimeoutMs");
+        if (opt instanceof Number) {
+            return ((Number) opt).longValue();
+        }
+        if (opt instanceof String) {
+            try {
+                return Long.parseLong((String) opt);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0L;
     }
 
     // ==================== JavaScript Execution (Selenium-based) =================
@@ -788,16 +824,52 @@ public class HybridProvider implements HubProvider {
     }
 
     private String findChromePath() {
-        String[] windowsPaths = {
-                System.getenv("PROGRAMFILES") + "\\Google\\Chrome\\Application\\chrome.exe",
-                System.getenv("PROGRAMFILES(X86)") + "\\Google\\Chrome\\Application\\chrome.exe",
-                System.getenv("LOCALAPPDATA") + "\\Google\\Chrome\\Application\\chrome.exe"
-        };
-        for (String path : windowsPaths) {
-            if (new File(path).exists())
-                return path;
+        String[] envKeys = { "CHROME_BIN", "CHROME_PATH", "GOOGLE_CHROME_BIN" };
+        for (String key : envKeys) {
+            String value = System.getenv(key);
+            if (value != null && !value.isBlank()) {
+                if (new File(value).exists()) {
+                    return value;
+                }
+            }
         }
-        throw new HubException("Chrome executable not found. Please ensure Chrome is installed.");
+
+        String os = System.getProperty("os.name").toLowerCase();
+        List<String> candidates = new ArrayList<>();
+
+        if (os.contains("win")) {
+            String programFiles = System.getenv("PROGRAMFILES");
+            String programFilesX86 = System.getenv("PROGRAMFILES(X86)");
+            String localAppData = System.getenv("LOCALAPPDATA");
+            if (programFiles != null)
+                candidates.add(programFiles + "\\Google\\Chrome\\Application\\chrome.exe");
+            if (programFilesX86 != null)
+                candidates.add(programFilesX86 + "\\Google\\Chrome\\Application\\chrome.exe");
+            if (localAppData != null)
+                candidates.add(localAppData + "\\Google\\Chrome\\Application\\chrome.exe");
+            if (programFiles != null)
+                candidates.add(programFiles + "\\Microsoft\\Edge\\Application\\msedge.exe");
+            if (programFilesX86 != null)
+                candidates.add(programFilesX86 + "\\Microsoft\\Edge\\Application\\msedge.exe");
+        } else if (os.contains("mac")) {
+            candidates.add("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+            candidates.add("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge");
+            candidates.add("/Applications/Chromium.app/Contents/MacOS/Chromium");
+        } else {
+            candidates.add("/usr/bin/google-chrome");
+            candidates.add("/usr/bin/google-chrome-stable");
+            candidates.add("/usr/bin/chromium");
+            candidates.add("/usr/bin/chromium-browser");
+            candidates.add("/snap/bin/chromium");
+        }
+
+        for (String path : candidates) {
+            if (new File(path).exists()) {
+                return path;
+            }
+        }
+
+        throw new HubException("Chrome executable not found. Please ensure Chrome is installed or set CHROME_BIN.");
     }
 
     private void waitForCdpReady(int port) {

@@ -6,19 +6,15 @@ import com.dod.hub.core.locator.HubLocator;
 import com.dod.hub.core.provider.HubProvider;
 import com.dod.hub.core.provider.ProviderSession;
 import com.dod.hub.core.provider.SessionCapabilities;
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.WaitForSelectorState;
 import com.dod.hub.core.exception.HubTimeoutException;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -34,6 +30,8 @@ public class PlaywrightProvider implements HubProvider {
         Browser browser;
         BrowserContext context;
         Page page;
+        Frame activeFrame;
+        volatile Dialog pendingDialog;
         Map<String, Page> handleMap = new HashMap<>();
 
         PlaywrightSessionContext(Playwright playwright, Browser browser, BrowserContext context, Page page) {
@@ -41,10 +39,12 @@ public class PlaywrightProvider implements HubProvider {
             this.browser = browser;
             this.context = context;
             this.page = page;
+            this.activeFrame = page.mainFrame();
             registerPage(page);
 
             // Automatically register new pages (popups, target="_blank", etc.)
             context.onPage(p -> registerPage(p));
+            context.onDialog(d -> this.pendingDialog = d);
         }
 
         String registerPage(Page p) {
@@ -88,18 +88,43 @@ public class PlaywrightProvider implements HubProvider {
         HubBrowserType bName = caps.getBrowserName();
         String gridUrl = caps.getGridUrl();
         boolean isRemote = gridUrl != null && !gridUrl.isEmpty();
+        boolean isWs = isRemote && (gridUrl.startsWith("ws://") || gridUrl.startsWith("wss://"));
 
         switch (bName) {
             case FIREFOX:
-                browser = isRemote ? playwright.firefox().connect(gridUrl) : playwright.firefox().launch(options);
+                if (isRemote) {
+                    if (!isWs) {
+                        throw new com.dod.hub.core.exception.HubException(
+                                "Remote Firefox requires a Playwright WS endpoint (ws:// or wss://).");
+                    }
+                    browser = playwright.firefox().connect(gridUrl);
+                } else {
+                    browser = playwright.firefox().launch(options);
+                }
                 break;
             case WEBKIT:
-                browser = isRemote ? playwright.webkit().connect(gridUrl) : playwright.webkit().launch(options);
+                if (isRemote) {
+                    if (!isWs) {
+                        throw new com.dod.hub.core.exception.HubException(
+                                "Remote WebKit requires a Playwright WS endpoint (ws:// or wss://).");
+                    }
+                    browser = playwright.webkit().connect(gridUrl);
+                } else {
+                    browser = playwright.webkit().launch(options);
+                }
                 break;
             case EDGE:
             case CHROME:
             default:
-                browser = isRemote ? playwright.chromium().connect(gridUrl) : playwright.chromium().launch(options);
+                if (isRemote) {
+                    if (isWs) {
+                        browser = playwright.chromium().connect(gridUrl);
+                    } else {
+                        browser = playwright.chromium().connectOverCDP(gridUrl);
+                    }
+                } else {
+                    browser = playwright.chromium().launch(options);
+                }
                 break;
         }
 
@@ -123,12 +148,35 @@ public class PlaywrightProvider implements HubProvider {
             ctx.playwright.close();
     }
 
+    @Override
+    public void closeWindow(ProviderSession session) {
+        PlaywrightSessionContext ctx = getCtx(session);
+        if (ctx.page != null && !ctx.page.isClosed()) {
+            ctx.page.close();
+        }
+        ctx.handleMap.values().removeIf(Page::isClosed);
+        if (!ctx.handleMap.isEmpty()) {
+            Page next = ctx.handleMap.values().iterator().next();
+            ctx.page = next;
+            ctx.activeFrame = next.mainFrame();
+        }
+    }
+
     private PlaywrightSessionContext getCtx(ProviderSession session) {
         return (PlaywrightSessionContext) session.getRawDriver();
     }
 
     private Page getPage(ProviderSession session) {
         return getCtx(session).page;
+    }
+
+    private Frame getActiveFrame(ProviderSession session) {
+        PlaywrightSessionContext ctx = getCtx(session);
+        return ctx.activeFrame != null ? ctx.activeFrame : ctx.page.mainFrame();
+    }
+
+    private void setActiveFrame(ProviderSession session, Frame frame) {
+        getCtx(session).activeFrame = frame;
     }
 
     private Locator getLocator(HubElementRef ref) {
@@ -159,13 +207,125 @@ public class PlaywrightProvider implements HubProvider {
         }
     }
 
+    // ==================== Frame Switching ====================
+
+    @Override
+    public void switchToFrame(ProviderSession session, int index) {
+        Frame current = getActiveFrame(session);
+        Locator loc = current.locator("iframe,frame").nth(index);
+        Frame target = resolveFrame(loc);
+        if (target == null) {
+            throw new HubTimeoutException("Timed out waiting for frame index: " + index, null);
+        }
+        setActiveFrame(session, target);
+    }
+
+    @Override
+    public void switchToFrame(ProviderSession session, String nameOrId) {
+        Frame current = getActiveFrame(session);
+        String safe = nameOrId.replace("\\", "\\\\").replace("\"", "\\\"");
+        String selector = "iframe[id=\"" + safe + "\"], frame[id=\"" + safe + "\"], " +
+                "iframe[name=\"" + safe + "\"], frame[name=\"" + safe + "\"]";
+        Locator loc = current.locator(selector).first();
+        Frame target = resolveFrame(loc);
+        if (target == null) {
+            throw new HubTimeoutException("Timed out waiting for frame name/id: " + nameOrId, null);
+        }
+        setActiveFrame(session, target);
+    }
+
+    @Override
+    public void switchToFrame(ProviderSession session, HubElementRef frameElement) {
+        Locator locator = getLocator(frameElement);
+        Frame target = resolveFrame(locator);
+        if (target == null) {
+            throw new HubTimeoutException("Timed out waiting for frame element: " + frameElement.getLocator(), null);
+        }
+        setActiveFrame(session, target);
+    }
+
+    @Override
+    public void switchToParentFrame(ProviderSession session) {
+        Frame current = getActiveFrame(session);
+        Frame parent = current.parentFrame();
+        if (parent != null) {
+            setActiveFrame(session, parent);
+        }
+    }
+
+    @Override
+    public void switchToDefaultContent(ProviderSession session) {
+        setActiveFrame(session, getPage(session).mainFrame());
+    }
+
+    @Override
+    public HubElementRef getActiveElement(ProviderSession session) {
+        Frame frame = getActiveFrame(session);
+        Locator loc = frame.locator(":focus").first();
+        return new HubElementRef(new HubLocator(com.dod.hub.core.locator.LocatorStrategy.CSS, ":focus"), loc);
+    }
+
+    private Frame resolveFrame(Locator locator) {
+        try {
+            locator.waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.ATTACHED));
+            ElementHandle handle = locator.elementHandle();
+            if (handle != null) {
+                return handle.contentFrame();
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        return null;
+    }
+
+    // ==================== Alert Management ====================
+
+    @Override
+    public void acceptAlert(ProviderSession session) {
+        Dialog dialog = getCtx(session).pendingDialog;
+        if (dialog == null) {
+            throw new com.dod.hub.core.exception.HubException("No alert present");
+        }
+        dialog.accept();
+        getCtx(session).pendingDialog = null;
+    }
+
+    @Override
+    public void dismissAlert(ProviderSession session) {
+        Dialog dialog = getCtx(session).pendingDialog;
+        if (dialog == null) {
+            throw new com.dod.hub.core.exception.HubException("No alert present");
+        }
+        dialog.dismiss();
+        getCtx(session).pendingDialog = null;
+    }
+
+    @Override
+    public String getAlertText(ProviderSession session) {
+        Dialog dialog = getCtx(session).pendingDialog;
+        if (dialog == null) {
+            throw new com.dod.hub.core.exception.HubException("No alert present");
+        }
+        return dialog.message();
+    }
+
+    @Override
+    public void sendKeysToAlert(ProviderSession session, String text) {
+        Dialog dialog = getCtx(session).pendingDialog;
+        if (dialog == null) {
+            throw new com.dod.hub.core.exception.HubException("No alert present");
+        }
+        dialog.accept(text);
+        getCtx(session).pendingDialog = null;
+    }
+
     @Override
     public HubElementRef find(ProviderSession session, HubLocator locator) {
-        Page page = getPage(session);
+        Frame frame = getActiveFrame(session);
         // Playwright locators are lazy by default. To adhere to the HubProvider
         // contract,
         // we enforce a synchronization point by waiting for the element to be attached.
-        Locator l = page.locator(toSelector(locator)).first();
+        Locator l = frame.locator(toSelector(locator)).first();
         // Check for strict/eager strategy (default: true) to mimic Selenium behavior
         boolean strict = true;
         Object strictOpt = session.getCapabilities().getOptions().get("playwright.strict.find");
@@ -187,8 +347,8 @@ public class PlaywrightProvider implements HubProvider {
 
     @Override
     public List<HubElementRef> findAll(ProviderSession session, HubLocator hubLocator) {
-        Page page = getPage(session);
-        Locator locator = page.locator(toSelector(hubLocator));
+        Frame frame = getActiveFrame(session);
+        Locator locator = frame.locator(toSelector(hubLocator));
 
         // Use locator.all() to retrieve all matching elements as HubElementRefs
 
@@ -236,7 +396,7 @@ public class PlaywrightProvider implements HubProvider {
 
     @Override
     public void type(ProviderSession session, HubElementRef element, String text) {
-        getLocator(element).fill(text);
+        getLocator(element).type(text);
     }
 
     @Override
@@ -322,19 +482,125 @@ public class PlaywrightProvider implements HubProvider {
 
     @Override
     public Object executeScript(ProviderSession session, String script, Object... args) {
-        Page page = getPage(session);
+        Frame frame = getActiveFrame(session);
         if (args.length == 0) {
-            return page.evaluate(script);
+            return frame.evaluate(script);
         } else if (args.length == 1) {
-            return page.evaluate(script, args[0]);
+            return frame.evaluate(script, normalizeForPlaywright(args[0]));
         } else {
-            return page.evaluate(script, Arrays.asList(args));
+            return frame.evaluate(script, normalizeArgs(args));
         }
     }
 
     @Override
     public Object executeAsyncScript(ProviderSession session, String script, Object... args) {
-        return executeScript(session, script, args);
+        Frame frame = getActiveFrame(session);
+        long timeoutMs = resolveScriptTimeoutMs(session);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("script", script);
+        payload.put("args", normalizeArgs(args));
+        payload.put("timeoutMs", timeoutMs > 0 ? (double) timeoutMs : 0d);
+
+        String wrapper = ""
+                + "(payload) => {\n"
+                + "  const script = payload.script || \"\";\n"
+                + "  const args = Array.isArray(payload.args) ? payload.args : [];\n"
+                + "  const timeoutMs = payload.timeoutMs || 0;\n"
+                + "  return new Promise((resolve, reject) => {\n"
+                + "    let done = false;\n"
+                + "    let timer = null;\n"
+                + "    if (timeoutMs > 0) {\n"
+                + "      timer = setTimeout(() => {\n"
+                + "        if (done) return;\n"
+                + "        done = true;\n"
+                + "        reject('Script timeout after ' + timeoutMs + 'ms');\n"
+                + "      }, timeoutMs);\n"
+                + "    }\n"
+                + "    const callback = (...cbArgs) => {\n"
+                + "      if (done) return;\n"
+                + "      done = true;\n"
+                + "      if (timer) clearTimeout(timer);\n"
+                + "      resolve(cbArgs.length <= 1 ? cbArgs[0] : cbArgs);\n"
+                + "    };\n"
+                + "    try {\n"
+                + "      const fn = new Function('args', 'callback',\n"
+                + "        'const __args = Array.isArray(args) ? args.slice() : [];'\n"
+                + "        + ' __args.push(callback);'\n"
+                + "        + ' return (function() { ' + script + ' }).apply(null, __args);'\n"
+                + "      );\n"
+                + "      fn(args, callback);\n"
+                + "    } catch (e) {\n"
+                + "      if (timer) clearTimeout(timer);\n"
+                + "      reject(e && e.message ? e.message : String(e));\n"
+                + "    }\n"
+                + "  });\n"
+                + "}";
+
+        try {
+            return frame.evaluate(wrapper, payload);
+        } catch (PlaywrightException e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+            if (msg.contains("Script timeout")) {
+                throw new HubTimeoutException(msg, e);
+            }
+            throw e;
+        }
+    }
+
+    private long resolveScriptTimeoutMs(ProviderSession session) {
+        Object opt = session.getCapabilities().getOptions().get("hub.scriptTimeoutMs");
+        if (opt instanceof Number) {
+            return ((Number) opt).longValue();
+        }
+        if (opt instanceof String) {
+            try {
+                return Long.parseLong((String) opt);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0L;
+    }
+
+    private List<Object> normalizeArgs(Object[] args) {
+        List<Object> normalized = new ArrayList<>(args.length);
+        for (Object arg : args) {
+            normalized.add(normalizeForPlaywright(arg));
+        }
+        return normalized;
+    }
+
+    private Object normalizeForPlaywright(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String || value instanceof Boolean) {
+            return value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        if (value instanceof List) {
+            List<?> list = (List<?>) value;
+            List<Object> normalized = new ArrayList<>(list.size());
+            for (Object item : list) {
+                normalized.add(normalizeForPlaywright(item));
+            }
+            return normalized;
+        }
+        if (value instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) value;
+            Map<String, Object> normalized = new HashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                normalized.put(key, normalizeForPlaywright(entry.getValue()));
+            }
+            return normalized;
+        }
+        if (value instanceof Object[]) {
+            return normalizeArgs((Object[]) value);
+        }
+        return value.toString();
     }
 
     // ==================== Cookie Management ====================
@@ -377,7 +643,7 @@ public class PlaywrightProvider implements HubProvider {
             map.put("value", cookie.value);
             map.put("domain", cookie.domain);
             map.put("path", cookie.path);
-            map.put("expires", cookie.expires);
+            map.put("expiry", toExpiryDate(cookie.expires));
             map.put("secure", cookie.secure);
             map.put("httpOnly", cookie.httpOnly);
             result.add(map);
@@ -395,7 +661,7 @@ public class PlaywrightProvider implements HubProvider {
                 map.put("value", cookie.value);
                 map.put("domain", cookie.domain);
                 map.put("path", cookie.path);
-                map.put("expires", cookie.expires);
+                map.put("expiry", toExpiryDate(cookie.expires));
                 map.put("secure", cookie.secure);
                 map.put("httpOnly", cookie.httpOnly);
                 return map;
@@ -404,12 +670,21 @@ public class PlaywrightProvider implements HubProvider {
         return null;
     }
 
+    private Date toExpiryDate(double expiresSeconds) {
+        if (expiresSeconds <= 0) {
+            return null;
+        }
+        long millis = (long) (expiresSeconds * 1000);
+        return new Date(millis);
+    }
+
     // ==================== Window Management ====================
 
     @Override
     public void maximizeWindow(ProviderSession session) {
         Page page = getPage(session);
-        page.setViewportSize(1920, 1080);
+        int[] size = getScreenSize(page);
+        page.setViewportSize(size[0], size[1]);
     }
 
     @Override
@@ -423,29 +698,236 @@ public class PlaywrightProvider implements HubProvider {
         Object width = page.evaluate("window.innerWidth");
         Object height = page.evaluate("window.innerHeight");
         if (width instanceof Number && height instanceof Number) {
-            return new int[] { ((Number) width).intValue(), ((Number) height).intValue() };
+            return new int[]{((Number) width).intValue(), ((Number) height).intValue()};
         }
         return null;
     }
 
     @Override
     public int[] getWindowPosition(ProviderSession session) {
-        throw new UnsupportedOperationException("getWindowPosition is not supported in Playwright");
+        PlaywrightSessionContext ctx = getCtx(session);
+        Map<String, JsonElement> bounds = resolveWindowBounds(ctx);
+        if (bounds != null) {
+            int left = toInt(bounds.get("left"));
+            int top = toInt(bounds.get("top"));
+            return new int[]{left, top};
+        }
+        try {
+            Object result = ctx.page.evaluate("() => [window.screenX || 0, window.screenY || 0]");
+            if (result instanceof List) {
+                List list = (List) result;
+                if (list.size() >= 2) {
+                    return new int[]{toInt(list.get(0)), toInt(list.get(1))};
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        throw new UnsupportedOperationException("Window position requires a Chromium CDP session.");
     }
 
     @Override
     public void setWindowPosition(ProviderSession session, int x, int y) {
-        throw new UnsupportedOperationException("setWindowPosition is not supported in Playwright");
+        Map<String, Object> bounds = new HashMap<>();
+        bounds.put("left", x);
+        bounds.put("top", y);
+        bounds.put("windowState", "normal");
+        setWindowBounds(session, bounds);
     }
 
     @Override
     public void fullscreenWindow(ProviderSession session) {
-        getPage(session).setViewportSize(1920, 1080);
+        Page page = getPage(session);
+        int[] size = getScreenSize(page);
+        page.setViewportSize(size[0], size[1]);
+    }
+
+    private int[] getScreenSize(Page page) {
+        Object width = page.evaluate("() => screen.availWidth");
+        Object height = page.evaluate("() => screen.availHeight");
+        if (width instanceof Number && height instanceof Number) {
+            return new int[]{((Number) width).intValue(), ((Number) height).intValue()};
+        }
+        return new int[]{1920, 1080};
     }
 
     @Override
     public void minimizeWindow(ProviderSession session) {
-        throw new UnsupportedOperationException("minimizeWindow is not supported in Playwright");
+        Map<String, Object> bounds = new HashMap<>();
+        bounds.put("windowState", "minimized");
+        setWindowBounds(session, bounds);
+    }
+
+    private void setWindowBounds(ProviderSession session, Map<String, Object> bounds) {
+        PlaywrightSessionContext ctx = getCtx(session);
+        CDPSession cdp = createCdpSession(ctx);
+        if (cdp == null) {
+            if (tryMoveWindow(ctx.page, bounds)) {
+                return;
+            }
+            throw new UnsupportedOperationException("Window bounds require a Chromium CDP session.");
+        }
+        Number windowId = resolveWindowId(cdp, ctx.page);
+        if (windowId == null) {
+            if (tryMoveWindow(ctx.page, bounds)) {
+                return;
+            }
+            throw new UnsupportedOperationException("Unable to obtain windowId via CDP.");
+        }
+        Map<String, Object> params = new HashMap<>();
+        params.put("windowId", windowId);
+        params.put("bounds", bounds);
+        cdp.send("Browser.setWindowBounds", toJsonObject(params));
+    }
+
+    private Map<String, JsonElement> resolveWindowBounds(PlaywrightSessionContext ctx) {
+        CDPSession cdp = createCdpSession(ctx);
+        if (cdp == null) {
+            return null;
+        }
+        Map<String, JsonElement> res = resolveWindowForTarget(cdp, ctx.page);
+        if (res == null) {
+            return null;
+        }
+        JsonElement bounds = res.get("bounds");
+        if (bounds != null && bounds.isJsonObject()) {
+            return bounds.getAsJsonObject().asMap();
+        }
+        return null;
+    }
+
+    private Number resolveWindowId(CDPSession cdp, Page page) {
+        Map<String, JsonElement> res = resolveWindowForTarget(cdp, page);
+        if (res == null) {
+            return null;
+        }
+        JsonElement windowId = res.get("windowId");
+        return windowId != null && windowId.isJsonPrimitive() ? windowId.getAsInt() : null;
+    }
+
+    private Map<String, JsonElement> resolveWindowForTarget(CDPSession cdp, Page page) {
+        Map<String, JsonElement>  res = sendGetWindowForTarget(cdp, new JsonObject());
+        if (res != null && res.get("windowId") != null) {
+            return res;
+        }
+        String targetId = resolveTargetId(cdp);
+        if (targetId == null) {
+            targetId = resolveTargetIdByPage(cdp, page);
+        }
+        if (targetId != null && !targetId.isEmpty()) {
+            JsonObject params = new JsonObject();
+            params.addProperty("targetId", targetId);
+            res = sendGetWindowForTarget(cdp, params);
+        }
+        return res;
+    }
+
+    private Map<String, JsonElement> sendGetWindowForTarget(CDPSession cdp, JsonObject params) {
+        Object res = cdp.send("Browser.getWindowForTarget", params);
+        if (res instanceof JsonObject json) {
+            return json.asMap();
+        }
+        return null;
+    }
+
+    private CDPSession createCdpSession(PlaywrightSessionContext ctx) {
+        try {
+            return ctx.context.newCDPSession(ctx.page);
+        } catch (PlaywrightException e) {
+            return null;
+        }
+    }
+
+    private JsonObject toJsonObject(Map<String, Object> map) {
+        return new Gson().toJsonTree(map).getAsJsonObject();
+    }
+
+    private JsonObject buildWindowForTargetParams(CDPSession cdp) {
+        JsonObject params = new JsonObject();
+        String targetId = resolveTargetId(cdp);
+        if (targetId != null && !targetId.isEmpty()) {
+            params.addProperty("targetId", targetId);
+        }
+        return params;
+    }
+
+    private String resolveTargetId(CDPSession cdp) {
+        try {
+            Object res = cdp.send("Target.getTargetInfo", new JsonObject());
+            if (!(res instanceof Map)) {
+                return null;
+            }
+            Object info = ((Map) res).get("targetInfo");
+            if (info instanceof Map) {
+                Object targetId = ((Map) info).get("targetId");
+                return targetId == null ? null : targetId.toString();
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private String resolveTargetIdByPage(CDPSession cdp, Page page) {
+        try {
+            Object res = cdp.send("Target.getTargets", new JsonObject());
+            if (!(res instanceof Map)) {
+                return null;
+            }
+            Object infos = ((Map) res).get("targetInfos");
+            if (!(infos instanceof List)) {
+                return null;
+            }
+            String url = page.url();
+            String title = page.title();
+            for (Object obj : (List) infos) {
+                if (!(obj instanceof Map)) {
+                    continue;
+                }
+                Map info = (Map) obj;
+                Object type = info.get("type");
+                if (type != null && !"page".equals(type.toString())) {
+                    continue;
+                }
+                Object infoUrl = info.get("url");
+                Object infoTitle = info.get("title");
+                boolean match = (url != null && url.equals(infoUrl))
+                        || (title != null && title.equals(infoTitle));
+                if (match) {
+                    Object targetId = info.get("targetId");
+                    return targetId == null ? null : targetId.toString();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private boolean tryMoveWindow(Page page, Map<String, Object> bounds) {
+        if (bounds == null) {
+            return false;
+        }
+        Object leftObj = bounds.get("left");
+        Object topObj = bounds.get("top");
+        if (!(leftObj instanceof Number) || !(topObj instanceof Number)) {
+            return false;
+        }
+        int left = ((Number) leftObj).intValue();
+        int top = ((Number) topObj).intValue();
+        try {
+            Object result = page.evaluate("([x,y]) => { if (typeof window.moveTo === 'function') { window.moveTo(x,y); return true; } return false; }",
+                    Arrays.asList(left, top));
+            return Boolean.TRUE.equals(result);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private int toInt(Object value) {
+        if (value instanceof JsonElement jsonElement && jsonElement.isJsonPrimitive() && jsonElement.getAsJsonPrimitive().isNumber()) {
+            return jsonElement.getAsJsonPrimitive().getAsNumber().intValue();
+        } else if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
     }
 
     @Override
@@ -468,12 +950,14 @@ public class PlaywrightProvider implements HubProvider {
         Page p = ctx.handleMap.get(nameOrHandle);
         if (p != null) {
             ctx.page = p;
+            ctx.activeFrame = p.mainFrame();
             p.bringToFront();
         } else {
             // Fallback: search by title
             for (Page page : ctx.context.pages()) {
                 if (nameOrHandle.equals(page.title())) {
                     ctx.page = page;
+                    ctx.activeFrame = page.mainFrame();
                     page.bringToFront();
                     return;
                 }
@@ -487,6 +971,7 @@ public class PlaywrightProvider implements HubProvider {
         PlaywrightSessionContext ctx = getCtx(session);
         Page newPage = ctx.context.newPage();
         ctx.page = newPage;
+        ctx.activeFrame = newPage.mainFrame();
         newPage.bringToFront();
     }
 }

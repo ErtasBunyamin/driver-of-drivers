@@ -29,6 +29,13 @@ public interface HubProvider {
      */
     void stop(ProviderSession session);
 
+    /**
+     * Closes the current window/tab without ending the session.
+     */
+    default void closeWindow(ProviderSession session) {
+        throw new UnsupportedOperationException("Window close is not supported by this provider.");
+    }
+
     // ==================== Frame Switching ====================
 
     /**

@@ -23,6 +23,7 @@ public enum CommandType {
     SWITCH_TO_ACTIVE_ELEMENT,
     SWITCH_TO_WINDOW,
     SWITCH_TO_NEW_WINDOW,
+    WINDOW_CLOSE,
 
     // Alerts
     ALERT_ACCEPT,

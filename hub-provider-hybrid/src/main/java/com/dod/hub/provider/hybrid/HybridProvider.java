@@ -67,7 +67,7 @@ import java.util.concurrent.TimeUnit;
 public class HybridProvider implements HubProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(HybridProvider.class);
-    private static final int CDP_READY_TIMEOUT_MS = 15000;
+    private static final int CDP_READY_TIMEOUT_MS = 30000;
     private static final int CDP_POLL_INTERVAL_MS = 200;
     private static final int FRAME_SYNC_TIMEOUT_MS = 2000;
     private static final long STOP_ACTION_TIMEOUT_MS = 5000;

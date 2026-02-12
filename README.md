@@ -41,7 +41,7 @@ Hub Framework is built on the principle of "Separation of Concerns," offering th
 <dependency>
     <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-spring-boot-starter</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.1</version>
 </dependency>
 
 <!-- Choose your provider (at least one required) -->
@@ -49,28 +49,28 @@ Hub Framework is built on the principle of "Separation of Concerns," offering th
 <dependency>
     <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-provider-selenium</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.1</version>
 </dependency>
 
 <!-- Option 2: Playwright -->
 <dependency>
     <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-provider-playwright</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.1</version>
 </dependency>
 
 <!-- Option 3: Hybrid (Selenium + Playwright via CDP) -->
 <dependency>
     <groupId>io.github.ertasbunyamin</groupId>
     <artifactId>hub-provider-hybrid</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.1</version>
 </dependency>
 ```
 
 #### Gradle (Kotlin DSL)
 ```kotlin
-implementation("io.github.ertasbunyamin:hub-spring-boot-starter:0.2.0")
-implementation("io.github.ertasbunyamin:hub-provider-selenium:0.2.0") // or playwright/hybrid
+implementation("io.github.ertasbunyamin:hub-spring-boot-starter:0.3.1")
+implementation("io.github.ertasbunyamin:hub-provider-selenium:0.3.1") // or playwright/hybrid
 ```
 
 ### Quick Start

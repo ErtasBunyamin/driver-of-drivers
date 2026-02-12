@@ -10,6 +10,7 @@ import com.dod.hub.core.provider.SessionCapabilities;
 import com.dod.hub.core.exception.HubTimeoutException;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.BrowserContext.WaitForPageOptions;
+import com.microsoft.playwright.options.WaitForSelectorState;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Cookie;
 import org.openqa.selenium.Dimension;
@@ -32,8 +33,10 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.ServerSocket;
 
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +47,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A dual-driver provider that connects both Selenium and Playwright to the same
@@ -63,10 +67,10 @@ import java.util.stream.Collectors;
 public class HybridProvider implements HubProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(HybridProvider.class);
-    private static final int DEFAULT_CDP_PORT = 9222;
-    private static final int CDP_READY_TIMEOUT_MS = 10000;
+    private static final int CDP_READY_TIMEOUT_MS = 15000;
     private static final int CDP_POLL_INTERVAL_MS = 200;
     private static final int FRAME_SYNC_TIMEOUT_MS = 2000;
+    private static final long STOP_ACTION_TIMEOUT_MS = 5000;
 
     @Override
     public String getName() {
@@ -149,6 +153,10 @@ public class HybridProvider implements HubProvider {
 
         Process browserProcess = launchBrowserWithCDP(caps, cdpPort, userDataDir);
 
+        if (cdpPort == 0) {
+            cdpPort = readDevToolsPort(userDataDir);
+        }
+
         waitForCdpReady(cdpPort);
 
         String cdpUrl = resolveCdpWebSocketUrl("http://localhost:" + cdpPort);
@@ -182,30 +190,39 @@ public class HybridProvider implements HubProvider {
         }
         HybridSession hybrid = (HybridSession) session;
 
-        try {
-            if (hybrid.getPlaywrightPage() != null)
-                hybrid.getPlaywrightPage().close();
-            if (hybrid.getPlaywrightBrowser() != null)
-                hybrid.getPlaywrightBrowser().close();
-            if (hybrid.getPlaywright() != null)
-                hybrid.getPlaywright().close();
-        } catch (Exception e) {
-            logger.warn("Error closing Playwright resources", e);
-        }
-
-        try {
-            if (hybrid.getSeleniumDriver() != null) {
-                hybrid.getSeleniumDriver().quit();
+        runWithTimeout("playwright-page-close", () -> {
+            Page page = hybrid.getPlaywrightPage();
+            if (page != null) {
+                page.close();
             }
-        } catch (Exception e) {
-            logger.warn("Error closing Selenium driver", e);
-        }
+        });
+        runWithTimeout("playwright-browser-close", () -> {
+            Browser browser = hybrid.getPlaywrightBrowser();
+            if (browser != null) {
+                browser.close();
+            }
+        });
+        runWithTimeout("playwright-close", () -> {
+            Playwright playwright = hybrid.getPlaywright();
+            if (playwright != null) {
+                playwright.close();
+            }
+        });
+        runWithTimeout("selenium-quit", () -> {
+            WebDriver driver = hybrid.getSeleniumDriver();
+            if (driver != null) {
+                driver.quit();
+            }
+        });
 
         try {
             Process proc = hybrid.getBrowserProcess();
             if (proc != null && proc.isAlive()) {
                 proc.destroy();
-                proc.waitFor();
+                if (!proc.waitFor(5, TimeUnit.SECONDS)) {
+                    proc.destroyForcibly();
+                    proc.waitFor(5, TimeUnit.SECONDS);
+                }
             }
         } catch (Exception e) {
             logger.warn("Error terminating browser process", e);
@@ -234,9 +251,11 @@ public class HybridProvider implements HubProvider {
             String selector = toPlaywrightSelector(locator);
             try {
                 Locator loc = frame.locator(selector).first();
-                loc.waitFor();
+                loc.waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.ATTACHED));
             } catch (TimeoutError e) {
-                throw new HubTimeoutException("Playwright auto-wait timed out for: " + locator, e);
+                logger.debug("Playwright auto-wait timed out for: {}", locator);
+            } catch (PlaywrightException e) {
+                logger.debug("Playwright auto-wait failed for {}: {}", locator, e.getMessage());
             }
         }
 
@@ -667,13 +686,75 @@ public class HybridProvider implements HubProvider {
     }
 
     private int resolveCdpPort(SessionCapabilities caps) {
-        Object portOpt = caps.getOptions().get("hybrid.cdp.port");
+        Object portOpt = caps.getOptions().getOrDefault("hybrid.cdp.port", "auto");
         if (portOpt instanceof Number) {
-            return ((Number) portOpt).intValue();
+            int port = ((Number) portOpt).intValue();
+            if (port == 0) {
+                return 0;
+            }
+            if (!isPortAvailable(port)) {
+                throw new HubException("CDP port " + port
+                        + " is already in use. Choose a free port or set hybrid.cdp.port=auto.");
+            }
+            return port;
         } else if (portOpt instanceof String) {
-            return Integer.parseInt((String) portOpt);
+            String raw = ((String) portOpt).trim();
+            if (raw.equalsIgnoreCase("auto") || raw.equalsIgnoreCase("random") || raw.equals("0")) {
+                return 0;
+            }
+            try {
+                int port = Integer.parseInt(raw);
+                if (port == 0) {
+                    return 0;
+                }
+                if (!isPortAvailable(port)) {
+                    throw new HubException("CDP port " + port
+                            + " is already in use. Choose a free port or set hybrid.cdp.port=auto.");
+                }
+                return port;
+            } catch (NumberFormatException e) {
+                logger.warn("Invalid hybrid.cdp.port '{}', falling back to default/auto.", raw);
+            }
         }
-        return DEFAULT_CDP_PORT;
+        return 0;
+    }
+
+    private int readDevToolsPort(Path userDataDir) {
+        Path portFile = userDataDir.resolve("DevToolsActivePort");
+        long deadline = System.currentTimeMillis() + CDP_READY_TIMEOUT_MS;
+
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                if (Files.exists(portFile)) {
+                    List<String> lines = Files.readAllLines(portFile, StandardCharsets.UTF_8);
+                    if (!lines.isEmpty()) {
+                        String first = lines.get(0).trim();
+                        if (!first.isEmpty()) {
+                            return Integer.parseInt(first);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.trace("Waiting for DevToolsActivePort: {}", e.getMessage());
+            }
+            try {
+                Thread.sleep(CDP_POLL_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new HubException("Interrupted while waiting for DevToolsActivePort", e);
+            }
+        }
+        throw new HubTimeoutException("DevToolsActivePort not created within " + CDP_READY_TIMEOUT_MS + "ms", null);
+    }
+
+    private boolean isPortAvailable(int port) {
+        try (ServerSocket socket = new ServerSocket()) {
+            socket.setReuseAddress(true);
+            socket.bind(new InetSocketAddress("127.0.0.1", port));
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private Path createTempProfile() {
@@ -688,7 +769,7 @@ public class HybridProvider implements HubProvider {
         String chromePath = findChromePath();
         List<String> command = List.of(
                 chromePath,
-                "--remote-debugging-port=" + cdpPort,
+                "--remote-debugging-port=" + (cdpPort == 0 ? "0" : cdpPort),
                 "--user-data-dir=" + userDataDir.toAbsolutePath(),
                 "--no-first-run",
                 "--no-default-browser-check",
@@ -790,6 +871,26 @@ public class HybridProvider implements HubProvider {
                     } catch (IOException ignored) {
                     }
                 });
+    }
+
+    private void runWithTimeout(String label, Runnable action) {
+        Thread t = new Thread(() -> {
+            try {
+                action.run();
+            } catch (Exception e) {
+                logger.warn("Error during {}: {}", label, e.getMessage());
+            }
+        }, "hybrid-stop-" + label);
+        t.setDaemon(true);
+        t.start();
+        try {
+            t.join(STOP_ACTION_TIMEOUT_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (t.isAlive()) {
+            logger.warn("{} did not finish within {}ms", label, STOP_ACTION_TIMEOUT_MS);
+        }
     }
 
     private boolean resolveUsePlaywrightWait(SessionCapabilities caps) {
@@ -908,6 +1009,20 @@ public class HybridProvider implements HubProvider {
 
     private void syncPlaywrightWindow(HybridSession hybrid) {
         try {
+            Browser browser = hybrid.getPlaywrightBrowser();
+            BrowserContext context = browser.contexts().get(0);
+            List<Page> pages = context.pages();
+            if (pages.isEmpty()) {
+                return;
+            }
+            if (pages.size() == 1) {
+                Page only = pages.get(0);
+                if (hybrid.getPlaywrightPage() != only && !only.isClosed()) {
+                    hybrid.setPlaywrightPage(only);
+                }
+                return;
+            }
+
             WebDriver selenium = hybrid.getSeleniumDriver();
             String syncId = UUID.randomUUID().toString();
 
@@ -917,11 +1032,7 @@ public class HybridProvider implements HubProvider {
                 logger.trace("Could not inject sync marker (likely transitioning): {}", e.getMessage());
             }
 
-            Browser browser = hybrid.getPlaywrightBrowser();
             Page foundPage = null;
-            int pagesCount = browser.contexts().get(0).pages().size();
-            waitForPlaywrightPage(hybrid);
-            boolean pagesChanged = pagesCount != browser.contexts().get(0).pages().size();
             searchLoop: for (BrowserContext ctx : browser.contexts()) {
                 for (Page p : ctx.pages()) {
                     try {
@@ -946,10 +1057,6 @@ public class HybridProvider implements HubProvider {
                 logger.debug("Synced Playwright window via marker: {}", syncId);
                 return;
             }
-            if (!pagesChanged) {
-                return;
-            }
-            List<Page> pages = browser.contexts().get(0).pages();
             if (!pages.isEmpty()) {
                 Page last = pages.get(pages.size() - 1);
                 hybrid.setPlaywrightPage(last);

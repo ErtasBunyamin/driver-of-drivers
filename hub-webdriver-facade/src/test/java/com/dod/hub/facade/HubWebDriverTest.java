@@ -214,6 +214,23 @@ class HubWebDriverTest {
         }
 
         @Test
+        @DisplayName("executeScript with HubWebElement should unwrap to HubElementRef")
+        void executeScriptWithHubWebElementUnwrapsToRef() {
+            // Arrange
+            HubLocator locator = new HubLocator(com.dod.hub.core.locator.LocatorStrategy.ID, "test");
+            HubElementRef ref = new HubElementRef(locator, "mockHandle");
+            HubWebElement element = new HubWebElement(driver, ref);
+
+            // Act
+            driver.executeScript("arguments[0].click();", element);
+
+            // Assert
+            assertTrue(mockProvider.executeScriptCalled);
+            assertEquals(1, mockProvider.lastScriptArgs.length);
+            assertEquals(ref, mockProvider.lastScriptArgs[0]);
+        }
+
+        @Test
         @DisplayName("executeAsyncScript should delegate to provider")
         void executeAsyncScriptDelegatesToProvider() {
             mockProvider.asyncScriptResult = "async-result";

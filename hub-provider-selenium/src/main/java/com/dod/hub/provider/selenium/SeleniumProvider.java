@@ -395,7 +395,7 @@ public class SeleniumProvider implements HubProvider {
     public Object executeScript(ProviderSession session, String script, Object... args) {
         WebDriver driver = getDriver(session);
         if (driver instanceof JavascriptExecutor) {
-            return ((JavascriptExecutor) driver).executeScript(script, args);
+            return ((JavascriptExecutor) driver).executeScript(script, normalizeArgs(args));
         }
         throw new UnsupportedOperationException("Driver does not support JavaScript execution");
     }
@@ -404,9 +404,44 @@ public class SeleniumProvider implements HubProvider {
     public Object executeAsyncScript(ProviderSession session, String script, Object... args) {
         WebDriver driver = getDriver(session);
         if (driver instanceof JavascriptExecutor) {
-            return ((JavascriptExecutor) driver).executeAsyncScript(script, args);
+            return ((JavascriptExecutor) driver).executeAsyncScript(script, normalizeArgs(args));
         }
         throw new UnsupportedOperationException("Driver does not support async JavaScript execution");
+    }
+
+    private Object[] normalizeArgs(Object[] args) {
+        if (args == null) {
+            return new Object[0];
+        }
+        Object[] normalized = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            normalized[i] = normalizeForSelenium(args[i]);
+        }
+        return normalized;
+    }
+
+    private Object normalizeForSelenium(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof HubElementRef) {
+            return ((HubElementRef) value).getProviderHandle();
+        }
+        if (value instanceof List) {
+            return ((List<?>) value).stream()
+                    .map(this::normalizeForSelenium)
+                    .collect(Collectors.toList());
+        }
+        if (value instanceof Map) {
+            return ((Map<?, ?>) value).entrySet().stream()
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            e -> normalizeForSelenium(e.getValue())));
+        }
+        if (value instanceof Object[]) {
+            return normalizeArgs((Object[]) value);
+        }
+        return value;
     }
 
     // ==================== Cookie Management ====================

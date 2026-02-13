@@ -483,12 +483,29 @@ public class PlaywrightProvider implements HubProvider {
     @Override
     public Object executeScript(ProviderSession session, String script, Object... args) {
         Frame frame = getActiveFrame(session);
-        if (args.length == 0) {
-            return frame.evaluate(script);
-        } else if (args.length == 1) {
-            return frame.evaluate(script, normalizeForPlaywright(args[0]));
-        } else {
-            return frame.evaluate(script, normalizeArgs(args));
+        List<Object> normalizedArgs = normalizeArgs(args);
+
+        // Wrap the user's script in a function that provides 'arguments'
+        // We use 'new Function' inside evaluate to create a scope where 'arguments' is
+        // available
+        // and mapped from the passed args.
+        String wrapper = ""
+                + "(args) => {\n"
+                + "  const __userScript = function() { \n"
+                + "      // Map args to arguments\n"
+                + "      const arguments = args;\n"
+                + "      " + script + "\n"
+                + "  };\n"
+                + "  return __userScript.apply(null, args);\n"
+                + "}";
+
+        try {
+            return frame.evaluate(wrapper, normalizedArgs);
+        } catch (PlaywrightException e) {
+            // Fallback: fast path if the script is simple return or doesn't use arguments
+            // This might not be needed if wrapper is robust, but good for debugging if
+            // wrapper fails
+            throw e;
         }
     }
 
@@ -524,10 +541,11 @@ public class PlaywrightProvider implements HubProvider {
                 + "      resolve(cbArgs.length <= 1 ? cbArgs[0] : cbArgs);\n"
                 + "    };\n"
                 + "    try {\n"
+                + "      // Wrap in function with 'arguments'\n"
                 + "      const fn = new Function('args', 'callback',\n"
-                + "        'const __args = Array.isArray(args) ? args.slice() : [];'\n"
-                + "        + ' __args.push(callback);'\n"
-                + "        + ' return (function() { ' + script + ' }).apply(null, __args);'\n"
+                + "        'const arguments = Array.isArray(args) ? args.slice() : [];'\n"
+                + "        + ' arguments.push(callback);'\n"
+                + "        + ' return (function() { ' + script + ' }).apply(null, arguments);'\n"
                 + "      );\n"
                 + "      fn(args, callback);\n"
                 + "    } catch (e) {\n"
@@ -573,6 +591,9 @@ public class PlaywrightProvider implements HubProvider {
     private Object normalizeForPlaywright(Object value) {
         if (value == null) {
             return null;
+        }
+        if (value instanceof HubElementRef) {
+            return getLocator((HubElementRef) value).elementHandle();
         }
         if (value instanceof String || value instanceof Boolean) {
             return value;
@@ -698,7 +719,7 @@ public class PlaywrightProvider implements HubProvider {
         Object width = page.evaluate("window.innerWidth");
         Object height = page.evaluate("window.innerHeight");
         if (width instanceof Number && height instanceof Number) {
-            return new int[]{((Number) width).intValue(), ((Number) height).intValue()};
+            return new int[] { ((Number) width).intValue(), ((Number) height).intValue() };
         }
         return null;
     }
@@ -710,14 +731,14 @@ public class PlaywrightProvider implements HubProvider {
         if (bounds != null) {
             int left = toInt(bounds.get("left"));
             int top = toInt(bounds.get("top"));
-            return new int[]{left, top};
+            return new int[] { left, top };
         }
         try {
             Object result = ctx.page.evaluate("() => [window.screenX || 0, window.screenY || 0]");
             if (result instanceof List) {
                 List list = (List) result;
                 if (list.size() >= 2) {
-                    return new int[]{toInt(list.get(0)), toInt(list.get(1))};
+                    return new int[] { toInt(list.get(0)), toInt(list.get(1)) };
                 }
             }
         } catch (Exception ignored) {
@@ -745,9 +766,9 @@ public class PlaywrightProvider implements HubProvider {
         Object width = page.evaluate("() => screen.availWidth");
         Object height = page.evaluate("() => screen.availHeight");
         if (width instanceof Number && height instanceof Number) {
-            return new int[]{((Number) width).intValue(), ((Number) height).intValue()};
+            return new int[] { ((Number) width).intValue(), ((Number) height).intValue() };
         }
-        return new int[]{1920, 1080};
+        return new int[] { 1920, 1080 };
     }
 
     @Override
@@ -805,7 +826,7 @@ public class PlaywrightProvider implements HubProvider {
     }
 
     private Map<String, JsonElement> resolveWindowForTarget(CDPSession cdp, Page page) {
-        Map<String, JsonElement>  res = sendGetWindowForTarget(cdp, new JsonObject());
+        Map<String, JsonElement> res = sendGetWindowForTarget(cdp, new JsonObject());
         if (res != null && res.get("windowId") != null) {
             return res;
         }
@@ -913,7 +934,8 @@ public class PlaywrightProvider implements HubProvider {
         int left = ((Number) leftObj).intValue();
         int top = ((Number) topObj).intValue();
         try {
-            Object result = page.evaluate("([x,y]) => { if (typeof window.moveTo === 'function') { window.moveTo(x,y); return true; } return false; }",
+            Object result = page.evaluate(
+                    "([x,y]) => { if (typeof window.moveTo === 'function') { window.moveTo(x,y); return true; } return false; }",
                     Arrays.asList(left, top));
             return Boolean.TRUE.equals(result);
         } catch (Exception e) {
@@ -922,7 +944,8 @@ public class PlaywrightProvider implements HubProvider {
     }
 
     private int toInt(Object value) {
-        if (value instanceof JsonElement jsonElement && jsonElement.isJsonPrimitive() && jsonElement.getAsJsonPrimitive().isNumber()) {
+        if (value instanceof JsonElement jsonElement && jsonElement.isJsonPrimitive()
+                && jsonElement.getAsJsonPrimitive().isNumber()) {
             return jsonElement.getAsJsonPrimitive().getAsNumber().intValue();
         } else if (value instanceof Number number) {
             return number.intValue();

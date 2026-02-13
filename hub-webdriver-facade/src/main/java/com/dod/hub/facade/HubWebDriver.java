@@ -589,13 +589,41 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
     @Override
     public Object executeScript(String script, Object... args) {
         CommandContext context = ctx(CommandType.EXECUTE_SCRIPT, HubCommand.TARGET_BROWSER);
-        return pipeline.execute(context, () -> provider.executeScript(getSession(), script, args));
+        Object[] unwrappedArgs = unwrapArgs(args);
+        return pipeline.execute(context, () -> provider.executeScript(getSession(), script, unwrappedArgs));
     }
 
     @Override
     public Object executeAsyncScript(String script, Object... args) {
         CommandContext context = ctx(CommandType.EXECUTE_ASYNC_SCRIPT, HubCommand.TARGET_BROWSER);
-        return pipeline.execute(context, () -> provider.executeAsyncScript(getSession(), script, args));
+        Object[] unwrappedArgs = unwrapArgs(args);
+        return pipeline.execute(context, () -> provider.executeAsyncScript(getSession(), script, unwrappedArgs));
+    }
+
+    private Object[] unwrapArgs(Object[] args) {
+        if (args == null)
+            return null;
+        Object[] unwrapped = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            unwrapped[i] = unwrap(args[i]);
+        }
+        return unwrapped;
+    }
+
+    private Object unwrap(Object arg) {
+        if (arg instanceof HubWebElement) {
+            return ((HubWebElement) arg).getElementRef();
+        }
+        if (arg instanceof List) {
+            return ((List<?>) arg).stream().map(this::unwrap).collect(Collectors.toList());
+        }
+        if (arg instanceof Map) {
+            return ((Map<?, ?>) arg).entrySet().stream()
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            e -> unwrap(e.getValue())));
+        }
+        return arg;
     }
 
     private void applyScriptTimeout(ProviderSession s) {

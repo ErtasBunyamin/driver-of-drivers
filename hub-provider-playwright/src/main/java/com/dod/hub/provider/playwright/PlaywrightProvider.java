@@ -33,13 +33,20 @@ public class PlaywrightProvider implements HubProvider {
         Frame activeFrame;
         volatile Dialog pendingDialog;
         Map<String, Page> handleMap = new HashMap<>();
+        String cdpUrl;
 
         PlaywrightSessionContext(Playwright playwright, Browser browser, BrowserContext context, Page page) {
+            this(playwright, browser, context, page, null);
+        }
+
+        PlaywrightSessionContext(Playwright playwright, Browser browser, BrowserContext context, Page page,
+                String cdpUrl) {
             this.playwright = playwright;
             this.browser = browser;
             this.context = context;
             this.page = page;
             this.activeFrame = page.mainFrame();
+            this.cdpUrl = cdpUrl;
             registerPage(page);
 
             // Automatically register new pages (popups, target="_blank", etc.)
@@ -128,10 +135,15 @@ public class PlaywrightProvider implements HubProvider {
                 break;
         }
 
+        String cdpUrl = null;
+        if (isRemote && !isWs && (bName == HubBrowserType.CHROME || bName == HubBrowserType.EDGE)) {
+            cdpUrl = gridUrl;
+        }
+
         BrowserContext context = browser.newContext();
         Page page = context.newPage();
 
-        PlaywrightSessionContext raw = new PlaywrightSessionContext(playwright, browser, context, page);
+        PlaywrightSessionContext raw = new PlaywrightSessionContext(playwright, browser, context, page, cdpUrl);
         return new ProviderSession(getName(), caps, raw);
     }
 
@@ -798,6 +810,18 @@ public class PlaywrightProvider implements HubProvider {
         params.put("windowId", windowId);
         params.put("bounds", bounds);
         cdp.send("Browser.setWindowBounds", toJsonObject(params));
+    }
+
+    // ==================== Capabilities ====================
+
+    @Override
+    public Map<String, Object> getCapabilities(ProviderSession session) {
+        Map<String, Object> caps = new HashMap<>(session.getCapabilities().getOptions());
+        PlaywrightSessionContext ctx = getCtx(session);
+        if (ctx.cdpUrl != null && !caps.containsKey("se:cdp")) {
+            caps.put("se:cdp", ctx.cdpUrl);
+        }
+        return caps;
     }
 
     private Map<String, JsonElement> resolveWindowBounds(PlaywrightSessionContext ctx) {

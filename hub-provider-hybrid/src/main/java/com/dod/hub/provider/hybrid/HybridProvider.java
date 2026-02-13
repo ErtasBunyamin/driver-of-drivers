@@ -433,6 +433,29 @@ public class HybridProvider implements HubProvider {
         executeSelenium((HybridSession) session, () -> getSelenium(session).switchTo().alert().sendKeys(text));
     }
 
+    // ==================== Capabilities ====================
+
+    @Override
+    public Map<String, Object> getCapabilities(ProviderSession session) {
+        HybridSession hybridSession = (HybridSession) session;
+        WebDriver driver = hybridSession.getSeleniumDriver();
+
+        Map<String, Object> caps = new HashMap<>();
+        if (driver instanceof HasCapabilities) {
+            caps.putAll(((HasCapabilities) driver).getCapabilities().asMap());
+        }
+
+        if (!caps.containsKey("se:cdp") && hybridSession.getCdpUrl() != null) {
+            caps.put("se:cdp", hybridSession.getCdpUrl());
+            String debuggerAddr = hybridSession.getCdpUrl()
+                    .replaceFirst("^wss?://", "")
+                    .replaceFirst("^https?://", "");
+            caps.put("goog:chromeOptions", Map.of("debuggerAddress", debuggerAddr));
+        }
+
+        return caps;
+    }
+
     // ==================== Frame Switching ====================
 
     @Override

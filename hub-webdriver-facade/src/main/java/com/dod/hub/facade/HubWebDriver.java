@@ -29,7 +29,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecutor {
+public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecutor, HasCapabilities {
 
     private final HubProvider provider;
     private final CommandPipeline pipeline;
@@ -637,5 +637,11 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
             } catch (Exception ignored) {
             }
         }
+    }
+
+    @Override
+    public Capabilities getCapabilities() {
+        Map<String, Object> caps = provider.getCapabilities(getSession());
+        return new ImmutableCapabilities(caps);
     }
 }

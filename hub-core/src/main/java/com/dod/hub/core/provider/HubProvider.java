@@ -447,4 +447,16 @@ public interface HubProvider {
     default void minimizeWindow(ProviderSession session) {
         // Default no-op for backward compatibility
     }
+
+    // ==================== Capabilities ====================
+
+    /**
+     * Retrieves the capabilities of the current session.
+     *
+     * @param session The active provider session.
+     * @return The capabilities as a map.
+     */
+    default Map<String, Object> getCapabilities(ProviderSession session) {
+        return Collections.emptyMap();
+    }
 }

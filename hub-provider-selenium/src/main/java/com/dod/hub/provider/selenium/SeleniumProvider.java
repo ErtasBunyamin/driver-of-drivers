@@ -203,6 +203,40 @@ public class SeleniumProvider implements HubProvider {
         getDriver(session).switchTo().alert().sendKeys(text);
     }
 
+    // ==================== Capabilities ====================
+
+    @Override
+    public Map<String, Object> getCapabilities(ProviderSession session) {
+        WebDriver driver = getDriver(session);
+        Map<String, Object> caps = new HashMap<>();
+        if (driver instanceof HasCapabilities) {
+            caps.putAll(((HasCapabilities) driver).getCapabilities().asMap());
+        }
+
+        if (!caps.containsKey("se:cdp")) {
+            String debuggerAddress = extractDebuggerAddress(caps);
+            if (debuggerAddress != null && !debuggerAddress.isEmpty()) {
+                caps.put("se:cdp", "ws://" + debuggerAddress + "/devtools/browser");
+            }
+        }
+
+        return caps;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String extractDebuggerAddress(Map<String, Object> caps) {
+        for (String key : new String[] { "goog:chromeOptions", "ms:edgeOptions" }) {
+            Object optionsObj = caps.get(key);
+            if (optionsObj instanceof Map) {
+                Object addr = ((Map<String, Object>) optionsObj).get("debuggerAddress");
+                if (addr != null) {
+                    return addr.toString();
+                }
+            }
+        }
+        return null;
+    }
+
     private By toBy(HubLocator locator) {
         switch (locator.getStrategy()) {
             case CSS:

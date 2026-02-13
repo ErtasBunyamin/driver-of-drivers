@@ -46,7 +46,7 @@ public class SessionCapabilities {
     }
 
     public void setOptions(Map<String, Object> options) {
-        this.options = options;
+        this.options = options != null ? new HashMap<>(options) : new HashMap<>();
     }
 
     public String getGridUrl() {

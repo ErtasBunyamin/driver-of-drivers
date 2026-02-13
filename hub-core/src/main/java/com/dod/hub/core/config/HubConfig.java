@@ -90,7 +90,7 @@ public class HubConfig {
     }
 
     public void setProviderOptions(Map<String, Object> providerOptions) {
-        this.providerOptions = providerOptions;
+        this.providerOptions = providerOptions != null ? new HashMap<>(providerOptions) : new HashMap<>();
     }
 
     public String getGridUrl() {

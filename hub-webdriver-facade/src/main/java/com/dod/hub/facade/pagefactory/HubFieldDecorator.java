@@ -6,6 +6,10 @@ import org.openqa.selenium.support.pagefactory.ElementLocator;
 import org.openqa.selenium.support.pagefactory.ElementLocatorFactory;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Proxy;
+import java.lang.reflect.Type;
 import java.util.List;
 
 /**
@@ -39,13 +43,44 @@ public class HubFieldDecorator extends DefaultFieldDecorator {
             return decorated;
         }
 
-        // Collection of components is not yet supported in the current version
+        // Check for List<HubComponent>
         if (List.class.isAssignableFrom(field.getType())) {
-            return null;
+            return decorateList(loader, field);
         }
 
         // Try to instantiate as a Component
         return decorateComponent(loader, field);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object decorateList(ClassLoader loader, Field field) {
+        // Check generic type
+        Type genericType = field.getGenericType();
+        if (!(genericType instanceof ParameterizedType)) {
+            return null;
+        }
+
+        ParameterizedType pt = (ParameterizedType) genericType;
+        java.lang.reflect.Type listType = pt.getActualTypeArguments()[0];
+
+        if (!(listType instanceof Class)) {
+            return null;
+        }
+
+        Class<?> listClass = (Class<?>) listType;
+        if (!HubComponent.class.isAssignableFrom(listClass)) {
+            return null;
+        }
+
+        Class<? extends HubComponent> componentClass = (Class<? extends HubComponent>) listClass;
+
+        ElementLocator locator = factory.createLocator(field);
+        if (locator == null) {
+            return null;
+        }
+
+        InvocationHandler handler = new HubComponentListHandler(locator, componentClass, injector);
+        return Proxy.newProxyInstance(loader, new Class[] { List.class }, handler);
     }
 
     private Object decorateComponent(ClassLoader loader, Field field) {

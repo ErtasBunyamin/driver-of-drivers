@@ -15,4 +15,11 @@ public class ComponentDemoPage {
     public GreetingComponent getGreetingComponent() {
         return greetingComponent;
     }
+
+    @FindBy(className = "greeting")
+    private java.util.List<GreetingComponent> greetingList;
+
+    public java.util.List<GreetingComponent> getGreetingList() {
+        return greetingList;
+    }
 }

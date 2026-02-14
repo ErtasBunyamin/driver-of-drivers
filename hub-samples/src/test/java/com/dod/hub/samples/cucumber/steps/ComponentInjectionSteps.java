@@ -63,4 +63,12 @@ public class ComponentInjectionSteps {
     public void verifyRootElement() {
         assertNotNull(greetingComponent.getRoot(), "Root element should be initialized (proxy)");
     }
+
+    @Then("the component list should not be null")
+    public void verifyComponentList() {
+        assertNotNull(demoPage.getGreetingList(), "List<GreetingComponent> should not be null");
+        // We can't easily assert size > 0 because the stability page might not match
+        // the selector,
+        // but the list object itself MUST be initialized (proxy list), not null.
+    }
 }

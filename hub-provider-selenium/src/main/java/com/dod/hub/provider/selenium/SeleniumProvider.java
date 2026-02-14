@@ -13,6 +13,8 @@ import org.openqa.selenium.edge.EdgeDriver;
 import org.openqa.selenium.edge.EdgeOptions;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxOptions;
+import org.openqa.selenium.interactions.Interactive;
+import org.openqa.selenium.interactions.Sequence;
 import org.openqa.selenium.safari.SafariDriver;
 import org.openqa.selenium.safari.SafariOptions;
 import com.dod.hub.core.exception.HubTimeoutException;
@@ -23,6 +25,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -579,5 +582,28 @@ public class SeleniumProvider implements HubProvider {
     @Override
     public void minimizeWindow(ProviderSession session) {
         getDriver(session).manage().window().minimize();
+    }
+    // ==================== Actions (Interactive) ====================
+
+    @Override
+    public void performActions(ProviderSession session, java.util.Collection<?> actions) {
+        WebDriver driver = getDriver(session);
+        if (driver instanceof Interactive) {
+            @SuppressWarnings("unchecked")
+            Collection<Sequence> sequences = (Collection<Sequence>) actions;
+            ((Interactive) driver).perform(sequences);
+        } else {
+            throw new UnsupportedOperationException("Driver does not support Interactive actions");
+        }
+    }
+
+    @Override
+    public void resetInputState(ProviderSession session) {
+        WebDriver driver = getDriver(session);
+        if (driver instanceof Interactive) {
+            ((Interactive) driver).resetInputState();
+        } else {
+            throw new UnsupportedOperationException("Driver does not support resetting input state");
+        }
     }
 }

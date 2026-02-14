@@ -24,6 +24,8 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.WindowType;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.interactions.Interactive;
+import org.openqa.selenium.interactions.Sequence;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.HasCapabilities;
@@ -1325,5 +1327,38 @@ public class HybridProvider implements HubProvider {
 
     private String escapeCssAttr(String value) {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    // ==================== Actions (Interactive) ====================
+
+    @Override
+    public void performActions(ProviderSession session, Collection<?> actions) {
+        // Hybrid delegates complex interactions to Selenium driver for now
+        HybridSession hybrid = (HybridSession) session;
+        executeSelenium(hybrid, () -> {
+            WebDriver driver = hybrid.getSeleniumDriver();
+            if (driver instanceof Interactive) {
+                @SuppressWarnings("unchecked")
+                Collection<Sequence> sequences = (Collection<Sequence>) actions;
+                ((Interactive) driver).perform(sequences);
+            } else {
+                throw new UnsupportedOperationException(
+                        "Underlying Selenium driver does not support Interactive actions");
+            }
+        });
+    }
+
+    @Override
+    public void resetInputState(ProviderSession session) {
+        HybridSession hybrid = (HybridSession) session;
+        executeSelenium(hybrid, () -> {
+            WebDriver driver = hybrid.getSeleniumDriver();
+            if (driver instanceof Interactive) {
+                ((Interactive) driver).resetInputState();
+            } else {
+                throw new UnsupportedOperationException(
+                        "Underlying Selenium driver does not support resetting input state");
+            }
+        });
     }
 }

@@ -54,5 +54,9 @@ public enum CommandType {
 
     // JavaScript Execution
     EXECUTE_SCRIPT,
-    EXECUTE_ASYNC_SCRIPT
+    EXECUTE_ASYNC_SCRIPT,
+
+    // Interactive Actions
+    PERFORM_ACTIONS,
+    RESET_INPUT_STATE
 }

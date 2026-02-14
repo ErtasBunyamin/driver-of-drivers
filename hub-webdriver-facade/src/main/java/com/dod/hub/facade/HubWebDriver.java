@@ -13,6 +13,8 @@ import com.dod.hub.core.provider.SessionCapabilities;
 import org.openqa.selenium.*;
 import org.openqa.selenium.logging.LogEntries;
 import org.openqa.selenium.logging.Logs;
+import org.openqa.selenium.interactions.Interactive;
+import org.openqa.selenium.interactions.Sequence;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,7 +31,32 @@ import java.util.Set;
 
 import java.util.stream.Collectors;
 
-public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecutor, HasCapabilities {
+public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecutor, HasCapabilities, Interactive {
+    // ... existing fields and constructors ...
+
+    // ... existing methods ...
+
+    // ==================== Interactive ====================
+
+    @Override
+    public void perform(java.util.Collection<Sequence> actions) {
+        CommandContext context = ctx(CommandType.PERFORM_ACTIONS, HubCommand.TARGET_BROWSER);
+        // We pass the raw actions collection. The provider implementation handles the
+        // casting/adaptation.
+        pipeline.execute(context, () -> {
+            provider.performActions(getSession(), actions);
+            return null;
+        });
+    }
+
+    @Override
+    public void resetInputState() {
+        CommandContext context = ctx(CommandType.RESET_INPUT_STATE, HubCommand.TARGET_BROWSER);
+        pipeline.execute(context, () -> {
+            provider.resetInputState(getSession());
+            return null;
+        });
+    }
 
     private final HubProvider provider;
     private final CommandPipeline pipeline;

@@ -3,6 +3,7 @@ package com.dod.hub.core.provider;
 import com.dod.hub.core.locator.HubElementRef;
 import com.dod.hub.core.locator.HubLocator;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -458,5 +459,27 @@ public interface HubProvider {
      */
     default Map<String, Object> getCapabilities(ProviderSession session) {
         return Collections.emptyMap();
+    }
+
+    // ==================== Actions (Interactive) ====================
+
+    /**
+     * Performs a sequence of actions (e.g., mouse, keyboard).
+     * The actions collection contains provider-specific Sequence objects.
+     *
+     * @param session The active provider session.
+     * @param actions A collection of action sequences.
+     */
+    default void performActions(ProviderSession session, Collection<?> actions) {
+        throw new UnsupportedOperationException("performActions is not supported by this provider.");
+    }
+
+    /**
+     * Resets the input state (releases all keys and pointer buttons).
+     *
+     * @param session The active provider session.
+     */
+    default void resetInputState(ProviderSession session) {
+        throw new UnsupportedOperationException("resetInputState is not supported by this provider.");
     }
 }

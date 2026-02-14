@@ -19,6 +19,12 @@ public class HubSpringFactory {
 
     public HubSpringFactory(ApplicationContext context) {
         this.beanFactory = context.getAutowireCapableBeanFactory();
+
+        // Register this factory as the global dependency injector for HubPageFactory
+        // This ensures that HubComponents created by HubFieldDecorator (even outside
+        // this factory)
+        // are autowired by Spring.
+        HubPageFactory.setGlobalDependencyInjector(instance -> beanFactory.autowireBean(instance));
     }
 
     /**

@@ -20,8 +20,15 @@ import java.util.List;
  */
 public class HubFieldDecorator extends DefaultFieldDecorator {
 
+    private final DependencyInjector injector;
+
     public HubFieldDecorator(ElementLocatorFactory factory) {
+        this(factory, null);
+    }
+
+    public HubFieldDecorator(ElementLocatorFactory factory, DependencyInjector injector) {
         super(factory);
+        this.injector = injector;
     }
 
     @Override
@@ -58,6 +65,11 @@ public class HubFieldDecorator extends DefaultFieldDecorator {
         try {
             // Instantiate using no-args constructor
             Object instance = field.getType().getDeclaredConstructor().newInstance();
+
+            // Inject dependencies if an injector is provided
+            if (injector != null) {
+                injector.inject(instance);
+            }
 
             // Initialize the component with the proxy root
             ((HubComponent) instance).init(proxy);

@@ -214,6 +214,60 @@ public class ProviderTestSteps {
         jsResult = ((JavascriptExecutor) driver()).executeScript(script, element);
     }
 
+    @When("I execute async JS scroll script with element {string} via driver")
+    public void i_execute_async_js_scroll_script_with_element_via_driver(String id) {
+        WebElement element = driver().findElement(By.id(id));
+        String js = """
+                  const el = arguments[0];
+                  const offset = Number(arguments[1] || 0);
+                  const done = arguments[arguments.length - 1];
+                
+                  if (!el) return done({ ok: false, reason: "element-null" });
+                
+                  const vh = () => (window.innerHeight || document.documentElement.clientHeight);
+                
+                  const isInView = () => {
+                    const r = el.getBoundingClientRect();
+                    const topOk = r.top >= offset;
+                    const bottomOk = r.bottom <= vh();
+                    // yatayda da biraz kontrol edelim
+                    const leftOk = r.left >= 0;
+                    const rightOk = r.right <= (window.innerWidth || document.documentElement.clientWidth);
+                    return topOk && bottomOk && leftOk && rightOk;
+                  };
+                
+                  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+                
+                  const start = Date.now();
+                  const maxMs = 1500; // tarayıcı içinde mikro-wait; scriptTimeout bunun üstünde olmalı
+                
+                  const initial = () => {
+                    const r = el.getBoundingClientRect();
+                    const centerPad = Math.max(0, (vh() - r.height) / 2);
+                    const targetY = window.pageYOffset + r.top - offset - centerPad;
+                    window.scrollTo(0, clamp(targetY, 0, document.documentElement.scrollHeight));
+                  };
+                
+                  initial();
+                
+                  (function tick() {
+                    if (isInView()) return done({ ok: true });
+                
+                    if (Date.now() - start > maxMs) {
+                      return done({ ok: false, reason: "not-in-view", rect: el.getBoundingClientRect() });
+                    }
+                
+                    // küçük düzeltme adımları: overshoot / sticky header etkisini azaltır
+                    const r = el.getBoundingClientRect();
+                    const delta = (r.top - offset) - 20;
+                    window.scrollBy(0, delta);
+                
+                    requestAnimationFrame(tick);
+                  })();
+                """;
+        jsResult = ((JavascriptExecutor) driver()).executeAsyncScript(js, element, 90);
+    }
+
     @When("I execute JS {string} via driver")
     public void i_execute_js_via_driver(String script) {
         jsResult = ((JavascriptExecutor) driver()).executeScript(script);

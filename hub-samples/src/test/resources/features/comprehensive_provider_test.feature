@@ -46,7 +46,8 @@ Feature: Comprehensive Provider Test (Page Object Model)
     When I toggle details via POM
     Then the details panel should be visible
     # JavaScript Execution
-    When I execute JS "arguments[0].scrollIntoView({ behavior: \"instant\", block: \"center\", inline: \"nearest\" });" with element "nav-link-footer" via driver
+    #When I execute JS "arguments[0].scrollIntoView({ behavior: \"instant\", block: \"center\", inline: \"nearest\" });" with element "nav-link-footer" via driver
+    When I execute async JS scroll script with element "nav-link-footer" via driver
     When I execute JS "return document.title;" via driver
     Then the JS result should be "DOD Stability Lab"
     # Screenshot

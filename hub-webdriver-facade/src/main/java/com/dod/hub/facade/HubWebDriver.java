@@ -597,9 +597,25 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
     }
 
     private Object unwrap(Object arg) {
+        if (arg == null) {
+            return null;
+        }
         if (arg instanceof HubWebElement) {
             return ((HubWebElement) arg).getElementRef();
         }
+        // Fallback: Check by class name to handle potential ClassLoader mismatches
+        // (e.g. Spring Boot DevTools)
+        if (arg.getClass().getName().equals("com.dod.hub.facade.HubWebElement")) {
+            try {
+                java.lang.reflect.Method method = arg.getClass().getMethod("getElementRef");
+                return method.invoke(arg);
+            } catch (Exception e) {
+                // Should not happen if class name matches, but log or ignore
+                // Returning original arg will likely cause failure downstream, but consistent
+                // with behavior
+            }
+        }
+
         if (arg instanceof List) {
             return ((List<?>) arg).stream().map(this::unwrap).collect(Collectors.toList());
         }

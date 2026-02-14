@@ -451,6 +451,15 @@ public class SeleniumProvider implements HubProvider {
         if (value instanceof HubElementRef) {
             return ((HubElementRef) value).getProviderHandle();
         }
+        // Fallback: Check by class name for HubElementRef mismatch
+        if (value.getClass().getName().equals("com.dod.hub.core.locator.HubElementRef")) {
+            try {
+                java.lang.reflect.Method method = value.getClass().getMethod("getProviderHandle");
+                return method.invoke(value);
+            } catch (Exception e) {
+                // ignore
+            }
+        }
         if (value instanceof List) {
             return ((List<?>) value).stream()
                     .map(this::normalizeForSelenium)

@@ -239,7 +239,28 @@ class HubWebDriverTest {
 
             assertEquals("async-result", result);
             assertTrue(mockProvider.executeAsyncScriptCalled);
+            assertEquals("async-result", result);
+            assertTrue(mockProvider.executeAsyncScriptCalled);
         }
+
+        @Test
+        @DisplayName("executeAsyncScript with HubWebElement should unwrap to HubElementRef")
+        void executeAsyncScriptWithHubWebElementUnwrapsToRef() {
+            // Arrange
+            HubLocator locator = new HubLocator(com.dod.hub.core.locator.LocatorStrategy.ID, "test-async");
+            HubElementRef ref = new HubElementRef(locator, "mockAsyncHandle");
+            HubWebElement element = new HubWebElement(driver, ref);
+
+            // Act
+            driver.executeAsyncScript("arguments[0].click();", element, 123);
+
+            // Assert
+            assertTrue(mockProvider.executeAsyncScriptCalled);
+            assertEquals(2, mockProvider.lastScriptArgs.length);
+            assertEquals(ref, mockProvider.lastScriptArgs[0]);
+            assertEquals(123, mockProvider.lastScriptArgs[1]);
+        }
+
     }
 
     @Nested
@@ -486,6 +507,8 @@ class HubWebDriverTest {
         @Override
         public Object executeAsyncScript(ProviderSession session, String script, Object... args) {
             executeAsyncScriptCalled = true;
+            lastScript = script;
+            lastScriptArgs = args;
             return asyncScriptResult;
         }
     }

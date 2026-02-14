@@ -14,6 +14,7 @@ import com.microsoft.playwright.options.Cookie;
 import com.microsoft.playwright.options.WaitForSelectorState;
 import com.dod.hub.core.exception.HubTimeoutException;
 
+import java.net.ServerSocket;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -34,6 +35,7 @@ public class PlaywrightProvider implements HubProvider {
         volatile Dialog pendingDialog;
         Map<String, Page> handleMap = new HashMap<>();
         String cdpUrl;
+        Process chromiumProcess;
 
         PlaywrightSessionContext(Playwright playwright, Browser browser, BrowserContext context, Page page) {
             this(playwright, browser, context, page, null);
@@ -96,6 +98,8 @@ public class PlaywrightProvider implements HubProvider {
         String gridUrl = caps.getGridUrl();
         boolean isRemote = gridUrl != null && !gridUrl.isEmpty();
         boolean isWs = isRemote && (gridUrl.startsWith("ws://") || gridUrl.startsWith("wss://"));
+        int debugPort = 0;
+        Process chromiumProcess = null;
 
         switch (bName) {
             case FIREFOX:
@@ -130,7 +134,25 @@ public class PlaywrightProvider implements HubProvider {
                         browser = playwright.chromium().connectOverCDP(gridUrl);
                     }
                 } else {
-                    browser = playwright.chromium().launch(options);
+                    // Self-launch Chromium with a debugging port to expose se:cdp
+                    debugPort = findFreePort();
+                    if (debugPort > 0) {
+                        chromiumProcess = launchChromium(playwright, caps.isHeadless(), debugPort);
+                        String localCdp = discoverCdpUrl(debugPort);
+                        if (localCdp != null) {
+                            browser = playwright.chromium().connectOverCDP(
+                                    "http://127.0.0.1:" + debugPort);
+                        } else {
+                            // Fallback: if self-launch fails, use regular launch
+                            if (chromiumProcess != null) {
+                                chromiumProcess.destroyForcibly();
+                                chromiumProcess = null;
+                            }
+                            browser = playwright.chromium().launch(options);
+                        }
+                    } else {
+                        browser = playwright.chromium().launch(options);
+                    }
                 }
                 break;
         }
@@ -138,13 +160,94 @@ public class PlaywrightProvider implements HubProvider {
         String cdpUrl = null;
         if (isRemote && !isWs && (bName == HubBrowserType.CHROME || bName == HubBrowserType.EDGE)) {
             cdpUrl = gridUrl;
+        } else if (!isRemote && (bName == HubBrowserType.CHROME || bName == HubBrowserType.EDGE)
+                && debugPort > 0 && chromiumProcess != null) {
+            cdpUrl = discoverCdpUrl(debugPort);
         }
 
-        BrowserContext context = browser.newContext();
-        Page page = context.newPage();
+        BrowserContext context;
+        if (browser.contexts().isEmpty()) {
+            context = browser.newContext();
+        } else {
+            context = browser.contexts().get(0);
+        }
+        Page page;
+        if (context.pages().isEmpty()) {
+            page = context.newPage();
+        } else {
+            page = context.pages().get(0);
+        }
 
         PlaywrightSessionContext raw = new PlaywrightSessionContext(playwright, browser, context, page, cdpUrl);
+        raw.chromiumProcess = chromiumProcess;
         return new ProviderSession(getName(), caps, raw);
+    }
+
+    private static int findFreePort() {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            socket.setReuseAddress(true);
+            return socket.getLocalPort();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private static Process launchChromium(Playwright playwright, boolean headless, int port) {
+        try {
+            String execPath = playwright.chromium().executablePath();
+            java.nio.file.Path tempDir = java.nio.file.Files.createTempDirectory("pw-cdp-");
+            List<String> cmd = new ArrayList<>();
+            cmd.add(execPath);
+            cmd.add("--remote-debugging-port=" + port);
+            cmd.add("--user-data-dir=" + tempDir.toAbsolutePath());
+            cmd.add("--no-first-run");
+            cmd.add("--no-default-browser-check");
+            cmd.add("--disable-background-networking");
+            cmd.add("--disable-default-apps");
+            if (headless) {
+                cmd.add("--headless=new");
+            }
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            return pb.start();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String discoverCdpUrl(int port) {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            try {
+                java.net.URL url = java.net.URI.create(
+                        "http://127.0.0.1:" + port + "/json/version").toURL();
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(500);
+                conn.setReadTimeout(500);
+                if (conn.getResponseCode() == 200) {
+                    try (java.io.InputStream is = conn.getInputStream()) {
+                        String body = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                        // Parse webSocketDebuggerUrl from JSON
+                        int idx = body.indexOf("\"webSocketDebuggerUrl\"");
+                        if (idx >= 0) {
+                            int colon = body.indexOf(':', idx + 21);
+                            int quote1 = body.indexOf('"', colon + 1);
+                            int quote2 = body.indexOf('"', quote1 + 1);
+                            if (quote1 >= 0 && quote2 > quote1) {
+                                return body.substring(quote1 + 1, quote2);
+                            }
+                        }
+                        return "ws://127.0.0.1:" + port + "/devtools/browser";
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        return null;
     }
 
     @Override
@@ -158,6 +261,9 @@ public class PlaywrightProvider implements HubProvider {
             ctx.browser.close();
         if (ctx.playwright != null)
             ctx.playwright.close();
+        if (ctx.chromiumProcess != null) {
+            ctx.chromiumProcess.destroyForcibly();
+        }
     }
 
     @Override
@@ -579,17 +685,7 @@ public class PlaywrightProvider implements HubProvider {
     }
 
     private long resolveScriptTimeoutMs(ProviderSession session) {
-        Object opt = session.getCapabilities().getOptions().get("hub.scriptTimeoutMs");
-        if (opt instanceof Number) {
-            return ((Number) opt).longValue();
-        }
-        if (opt instanceof String) {
-            try {
-                return Long.parseLong((String) opt);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return 0L;
+        return session.getScriptTimeoutMs();
     }
 
     private List<Object> normalizeArgs(Object[] args) {

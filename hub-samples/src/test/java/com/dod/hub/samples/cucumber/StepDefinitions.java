@@ -14,6 +14,8 @@ import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import org.testng.Assert;
 import org.openqa.selenium.By;
+import org.openqa.selenium.Capabilities;
+import org.openqa.selenium.HasCapabilities;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.Point;
 import org.openqa.selenium.WebElement;
@@ -59,11 +61,11 @@ public class StepDefinitions {
     public void setup(Scenario scenario) {
         Collection<String> tagNames = scenario.getSourceTagNames();
         HubConfig config = new HubConfig();
-        if(tagNames.contains("@Playwright")) {
+        if (tagNames.contains("@Playwright")) {
             config.setProvider(HubProviderType.PLAYWRIGHT);
-        } else if(tagNames.contains("@Selenium")) {
+        } else if (tagNames.contains("@Selenium")) {
             config.setProvider(HubProviderType.SELENIUM);
-        } else if(tagNames.contains("@Hybrid")) {
+        } else if (tagNames.contains("@Hybrid")) {
             config.setProvider(HubProviderType.HYBRID);
             config.addOption("hybrid.cdp.port", 0);
         } else {
@@ -500,5 +502,30 @@ public class StepDefinitions {
             index = Math.max(0, Math.min(index, sorted.size() - 1));
             return sorted.get(index);
         }
+    }
+
+    // ==================== Capabilities ====================
+
+    private Capabilities lastCapabilities;
+
+    @Then("the driver should expose capabilities")
+    public void the_driver_should_expose_capabilities() {
+        Assert.assertTrue(driver instanceof HasCapabilities, "Driver should implement HasCapabilities");
+        lastCapabilities = ((HasCapabilities) driver).getCapabilities();
+        Assert.assertNotNull(lastCapabilities, "Capabilities should not be null");
+    }
+
+    @Then("the capabilities should contain {string}")
+    public void the_capabilities_should_contain(String key) {
+        Assert.assertNotNull(lastCapabilities, "Call 'the driver should expose capabilities' first");
+        Object value = lastCapabilities.getCapability(key);
+        Assert.assertNotNull(value, "Capability '" + key + "' should be present but was null");
+    }
+
+    @Then("the capabilities should not contain {string}")
+    public void the_capabilities_should_not_contain(String key) {
+        Assert.assertNotNull(lastCapabilities, "Call 'the driver should expose capabilities' first");
+        Object value = lastCapabilities.getCapability(key);
+        Assert.assertNull(value, "Capability '" + key + "' should NOT be present but was: " + value);
     }
 }

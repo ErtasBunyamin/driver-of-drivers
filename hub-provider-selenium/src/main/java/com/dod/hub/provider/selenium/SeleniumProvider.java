@@ -410,17 +410,7 @@ public class SeleniumProvider implements HubProvider {
     }
 
     private long resolveScriptTimeoutMs(ProviderSession session) {
-        Object opt = session.getCapabilities().getOptions().get("hub.scriptTimeoutMs");
-        if (opt instanceof Number) {
-            return ((Number) opt).longValue();
-        }
-        if (opt instanceof String) {
-            try {
-                return Long.parseLong((String) opt);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return 0L;
+        return session.getScriptTimeoutMs();
     }
 
     // ==================== JavaScript Execution ====================

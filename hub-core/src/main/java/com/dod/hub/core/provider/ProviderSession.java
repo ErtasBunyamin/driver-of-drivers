@@ -16,6 +16,8 @@ public class ProviderSession {
     // The raw driver object (e.g. org.openqa.selenium.WebDriver)
     private final Object rawDriver;
 
+    private long scriptTimeoutMs;
+
     public ProviderSession(String providerName, SessionCapabilities capabilities, Object rawDriver) {
         this.sessionId = UUID.randomUUID().toString();
         this.providerName = providerName;
@@ -42,5 +44,13 @@ public class ProviderSession {
 
     public Object getRawDriver() {
         return rawDriver;
+    }
+
+    public long getScriptTimeoutMs() {
+        return scriptTimeoutMs;
+    }
+
+    public void setScriptTimeoutMs(long scriptTimeoutMs) {
+        this.scriptTimeoutMs = scriptTimeoutMs;
     }
 }

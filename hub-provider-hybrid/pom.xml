@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.ertasbunyamin</groupId>
         <artifactId>hub-parent</artifactId>
-        <version>0.3.4</version>
+        <version>0.3.5</version>
     </parent>
 
     <artifactId>hub-provider-hybrid</artifactId>

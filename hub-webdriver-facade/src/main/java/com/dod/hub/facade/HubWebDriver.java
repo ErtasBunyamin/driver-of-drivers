@@ -470,8 +470,8 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
                     @Override
                     public Timeouts scriptTimeout(Duration duration) {
                         scriptTimeoutMs = duration.toMillis();
-                        caps.addOption("hub.scriptTimeoutMs", scriptTimeoutMs);
                         if (session != null) {
+                            session.setScriptTimeoutMs(scriptTimeoutMs);
                             applyScriptTimeout(session);
                             provider.setTimeouts(session, implicitWaitMs, pageLoadTimeoutMs);
                         }

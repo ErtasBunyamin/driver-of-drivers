@@ -42,6 +42,9 @@ public class HubWebElement implements WebElement, WrapsElement {
 
     @Override
     public WebElement getWrappedElement() {
+        if (elementRef != null && elementRef.getProviderHandle() instanceof WebElement) {
+            return (WebElement) elementRef.getProviderHandle();
+        }
         return this;
     }
 

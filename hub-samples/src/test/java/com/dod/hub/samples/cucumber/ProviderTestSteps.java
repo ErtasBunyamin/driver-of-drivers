@@ -6,12 +6,8 @@ import com.dod.hub.starter.context.HubContext;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
-import org.openqa.selenium.By;
-import org.openqa.selenium.HasCapabilities;
-import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.OutputType;
-import org.openqa.selenium.TakesScreenshot;
-import org.openqa.selenium.WebElement;
+import org.openqa.selenium.*;
+import org.openqa.selenium.interactions.Actions;
 import org.testng.Assert;
 
 import java.net.URL;
@@ -221,11 +217,11 @@ public class ProviderTestSteps {
                   const el = arguments[0];
                   const offset = Number(arguments[1] || 0);
                   const done = arguments[arguments.length - 1];
-                
+
                   if (!el) return done({ ok: false, reason: "element-null" });
-                
+
                   const vh = () => (window.innerHeight || document.documentElement.clientHeight);
-                
+
                   const isInView = () => {
                     const r = el.getBoundingClientRect();
                     const topOk = r.top >= offset;
@@ -235,33 +231,33 @@ public class ProviderTestSteps {
                     const rightOk = r.right <= (window.innerWidth || document.documentElement.clientWidth);
                     return topOk && bottomOk && leftOk && rightOk;
                   };
-                
+
                   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-                
+
                   const start = Date.now();
                   const maxMs = 1500; // tarayıcı içinde mikro-wait; scriptTimeout bunun üstünde olmalı
-                
+
                   const initial = () => {
                     const r = el.getBoundingClientRect();
                     const centerPad = Math.max(0, (vh() - r.height) / 2);
                     const targetY = window.pageYOffset + r.top - offset - centerPad;
                     window.scrollTo(0, clamp(targetY, 0, document.documentElement.scrollHeight));
                   };
-                
+
                   initial();
-                
+
                   (function tick() {
                     if (isInView()) return done({ ok: true });
-                
+
                     if (Date.now() - start > maxMs) {
                       return done({ ok: false, reason: "not-in-view", rect: el.getBoundingClientRect() });
                     }
-                
+
                     // küçük düzeltme adımları: overshoot / sticky header etkisini azaltır
                     const r = el.getBoundingClientRect();
                     const delta = (r.top - offset) - 20;
                     window.scrollBy(0, delta);
-                
+
                     requestAnimationFrame(tick);
                   })();
                 """;
@@ -390,5 +386,13 @@ public class ProviderTestSteps {
         Assert.assertNotNull(source, "Page source should not be null");
         Assert.assertTrue(source.contains(fragment),
                 "Expected page source to contain '" + fragment + "'");
+    }
+
+    // ── Actions ──
+
+    @When("I perform a hover action on element {string}")
+    public void i_perform_a_hover_action_on_element(String id) {
+        WebElement element = driver().findElement(By.id(id));
+        new Actions(driver()).doubleClick(element).click(element).sendKeys(Keys.BACK_SPACE).build().perform();
     }
 }

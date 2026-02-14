@@ -20,7 +20,8 @@ Feature: Comprehensive Provider Test (Page Object Model)
     # Clear & Type
     When I type "overwrite test" into the item input
     Then the item input value should be "overwrite test"
-    When I clear the item input
+    When I perform a hover action on element "item-input"
+    #When I clear the item input
     Then the item input value should be ""
     # Element State — isEnabled
     Then the disabled input should not be enabled

@@ -1260,7 +1260,8 @@ public class PlaywrightProvider implements HubProvider {
         if ("pointerMove".equals(actionType)) {
             Object xObj = action.get("x");
             Object yObj = action.get("y");
-            String origin = (String) action.get("origin");
+            Object originObj = action.get("origin");
+            String origin = originObj instanceof String ? (String) originObj : null;
 
             if (xObj instanceof Number && yObj instanceof Number) {
                 double x = ((Number) xObj).doubleValue();
@@ -1275,9 +1276,9 @@ public class PlaywrightProvider implements HubProvider {
                     // We'll treat as absolute for now or warn.
                 } else if ("viewport".equals(origin)) {
                     page.mouse().move(x, y);
-                } else if (origin != null) {
-                    // Element origin.
-                    // Warning: We cannot resolve element ID here easily.
+                } else if (originObj != null && !"viewport".equals(origin) && !"pointer".equals(origin)) {
+                    // Element origin (originObj is likely a WebElement or Map)
+                    // Warning: We cannot resolve element ID here easily without HubElementRef.
                     // System.err.println("Element origin not supported in PlaywrightProvider
                     // performActions");
                 }

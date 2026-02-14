@@ -598,7 +598,7 @@ public class HybridProvider implements HubProvider {
             driver.manage().timeouts().pageLoadTimeout(java.time.Duration.ofMillis(pageLoadMs));
         long scriptTimeoutMs = resolveScriptTimeoutMs(session);
         if (scriptTimeoutMs > 0) {
-            driver.manage().timeouts().setScriptTimeout(java.time.Duration.ofMillis(scriptTimeoutMs));
+            driver.manage().timeouts().scriptTimeout(java.time.Duration.ofMillis(scriptTimeoutMs));
         }
 
         Page page = getPlaywrightPage(session);

@@ -26,7 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
+
 import java.util.stream.Collectors;
 
 public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecutor, HasCapabilities {
@@ -449,22 +449,12 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
                     }
 
                     @Override
-                    public Timeouts implicitlyWait(long time, TimeUnit unit) {
-                        return implicitlyWait(Duration.ofMillis(unit.toMillis(time)));
-                    }
-
-                    @Override
                     public Timeouts pageLoadTimeout(Duration duration) {
                         pageLoadTimeoutMs = duration.toMillis();
                         if (session != null) {
                             provider.setTimeouts(session, implicitWaitMs, pageLoadTimeoutMs);
                         }
                         return this;
-                    }
-
-                    @Override
-                    public Timeouts pageLoadTimeout(long time, TimeUnit unit) {
-                        return pageLoadTimeout(Duration.ofMillis(unit.toMillis(time)));
                     }
 
                     @Override
@@ -478,10 +468,6 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
                         return this;
                     }
 
-                    @Override
-                    public Timeouts setScriptTimeout(long time, TimeUnit unit) {
-                        return scriptTimeout(Duration.ofMillis(unit.toMillis(time)));
-                    }
                 };
             }
 
@@ -633,7 +619,7 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
         Object raw = s.getRawDriver();
         if (raw instanceof WebDriver) {
             try {
-                ((WebDriver) raw).manage().timeouts().setScriptTimeout(Duration.ofMillis(scriptTimeoutMs));
+                ((WebDriver) raw).manage().timeouts().scriptTimeout(Duration.ofMillis(scriptTimeoutMs));
             } catch (Exception ignored) {
             }
         }

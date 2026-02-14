@@ -289,7 +289,7 @@ public class StepDefinitions {
 
     @When("I set async script timeout to {int} ms")
     public void i_set_async_script_timeout_to_ms(int timeoutMs) {
-        driver.manage().timeouts().setScriptTimeout(Duration.ofMillis(timeoutMs));
+        driver.manage().timeouts().scriptTimeout(Duration.ofMillis(timeoutMs));
     }
 
     @Then("an async script with {int} ms delay should time out")

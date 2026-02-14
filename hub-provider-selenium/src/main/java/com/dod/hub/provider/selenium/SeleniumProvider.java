@@ -405,7 +405,7 @@ public class SeleniumProvider implements HubProvider {
             manage.timeouts().pageLoadTimeout(Duration.ofMillis(pageLoadMs));
         long scriptTimeoutMs = resolveScriptTimeoutMs(session);
         if (scriptTimeoutMs > 0) {
-            manage.timeouts().setScriptTimeout(Duration.ofMillis(scriptTimeoutMs));
+            manage.timeouts().scriptTimeout(Duration.ofMillis(scriptTimeoutMs));
         }
     }
 

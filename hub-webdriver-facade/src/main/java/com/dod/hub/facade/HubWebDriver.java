@@ -600,20 +600,38 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
         if (arg == null) {
             return null;
         }
+
+        // Priority 1: Direct cast (fastest)
         if (arg instanceof HubWebElement) {
             return ((HubWebElement) arg).getElementRef();
         }
-        // Fallback: Check by class name to handle potential ClassLoader mismatches
-        // (e.g. Spring Boot DevTools)
-        if (arg.getClass().getName().equals("com.dod.hub.facade.HubWebElement")) {
-            try {
-                java.lang.reflect.Method method = arg.getClass().getMethod("getElementRef");
+
+        // Priority 2: Duck Typing (Reflection) - Check for getElementRef()
+        // This handles JDK Proxies (Spring CGLIB, etc.) where instanceof fails or class
+        // name differs
+        try {
+            java.lang.reflect.Method method = arg.getClass().getMethod("getElementRef");
+            if (HubElementRef.class.isAssignableFrom(method.getReturnType())) {
                 return method.invoke(arg);
-            } catch (Exception e) {
-                // Should not happen if class name matches, but log or ignore
-                // Returning original arg will likely cause failure downstream, but consistent
-                // with behavior
             }
+        } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
+            // Not a HubWebElement-like object, proceed
+        }
+
+        // Priority 3: WrapsElement (Recursive Unwrap)
+        // Handles standard Selenium Proxies (PageFactory, etc.) and our own
+        // HubWebElement (if proxied)
+        try {
+            java.lang.reflect.Method method = arg.getClass().getMethod("getWrappedElement");
+            if (WebElement.class.isAssignableFrom(method.getReturnType())) {
+                Object wrapped = method.invoke(arg);
+                // Prevent infinite recursion if wrapped element is same as arg
+                if (wrapped != arg) {
+                    return unwrap(wrapped);
+                }
+            }
+        } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
+            // Not a wrapper, proceed
         }
 
         if (arg instanceof List) {

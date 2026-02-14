@@ -448,18 +448,27 @@ public class SeleniumProvider implements HubProvider {
         if (value == null) {
             return null;
         }
+
+        // Priority 1: Direct cast
         if (value instanceof HubElementRef) {
             return ((HubElementRef) value).getProviderHandle();
         }
-        // Fallback: Check by class name for HubElementRef mismatch
-        if (value.getClass().getName().equals("com.dod.hub.core.locator.HubElementRef")) {
-            try {
-                java.lang.reflect.Method method = value.getClass().getMethod("getProviderHandle");
-                return method.invoke(value);
-            } catch (Exception e) {
-                // ignore
+
+        // Priority 2: Duck Typing (Reflection) - Check for getProviderHandle()
+        // Handles ClassLoader mismatches or Proxies wrapping HubElementRef
+        try {
+            java.lang.reflect.Method method = value.getClass().getMethod("getProviderHandle");
+            // We don't restrict return type strictly because that might also be loaded by a
+            // different CL
+            // But usually it returns Object or WebElement/Locator
+            Object result = method.invoke(value);
+            if (result != null) {
+                return result;
             }
+        } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
+            // Not a HubElementRef-like object, proceed
         }
+
         if (value instanceof List) {
             return ((List<?>) value).stream()
                     .map(this::normalizeForSelenium)

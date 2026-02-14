@@ -20,7 +20,7 @@ import java.util.List;
  * operations
  * to a selected {@link HubProvider} via the {@link CommandPipeline}.
  */
-public class HubWebElement implements WebElement {
+public class HubWebElement implements WebElement, WrapsElement {
 
     private final HubElementRef elementRef;
     private final ProviderSession session;
@@ -38,6 +38,11 @@ public class HubWebElement implements WebElement {
 
     public HubElementRef getElementRef() {
         return elementRef;
+    }
+
+    @Override
+    public WebElement getWrappedElement() {
+        return this;
     }
 
     private CommandContext ctx(CommandType type, String target) {

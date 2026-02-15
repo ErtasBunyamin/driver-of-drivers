@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Complex Components Lab</title>
+    <style>
+        .parent {
+            border: 2px solid blue;
+            margin: 10px;
+            padding: 10px;
+        }
+
+        .child {
+            border: 2px solid green;
+            margin: 5px;
+            padding: 5px;
+        }
+
+        .grandchild {
+            border: 2px solid red;
+            margin: 2px;
+            padding: 2px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Complex Component Structures</h1>
+
+    <div id="parent-list">
+        <!-- Parent 1 -->
+        <div class="parent" data-id="p1">
+            <h3>Parent 1</h3>
+            <div class="single-child">
+                <div class="child">
+                    <h4>Single Child of P1</h4>
+                    <div class="grandchild">Grandchild Content P1-S</div>
+                </div>
+            </div>
+            <div class="child-list">
+                <div class="child">Child 1 of P1</div>
+                <div class="child">Child 2 of P1</div>
+            </div>
+        </div>
+
+        <!-- Parent 2 -->
+        <div class="parent" data-id="p2">
+            <h3>Parent 2</h3>
+            <div class="single-child">
+                <div class="child">
+                    <h4>Single Child of P2</h4>
+                    <span class="grandchild">Grandchild Content P2-S</span>
+                </div>
+            </div>
+            <div class="child-list">
+                <div class="child">Child 1 of P2</div>
+                <div class="child">Child 2 of P2</div>
+                <div class="child">Child 3 of P2</div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

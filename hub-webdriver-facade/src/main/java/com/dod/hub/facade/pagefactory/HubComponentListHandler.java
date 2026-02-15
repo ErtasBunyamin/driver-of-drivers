@@ -37,7 +37,7 @@ public class HubComponentListHandler implements InvocationHandler {
                 if (injector != null) {
                     injector.inject(component);
                 }
-                component.init(element);
+                component.init(element, injector);
                 components.add(component);
             } catch (Exception e) {
                 throw new RuntimeException("Failed to instantiate component: " + componentType.getName(), e);

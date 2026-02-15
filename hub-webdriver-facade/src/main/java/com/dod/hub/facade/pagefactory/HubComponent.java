@@ -18,8 +18,13 @@ public abstract class HubComponent {
      * and initialize internal @FindBy fields relative to this root.
      */
     public void init(WebElement root) {
+        init(root, null);
+    }
+
+    public void init(WebElement root, DependencyInjector injector) {
         // Initialize fields inside this component, scoped to the root element
-        PageFactory.initElements(new DefaultElementLocatorFactory(root), this);
+        // Use HubFieldDecorator so that nested HubComponents are also decorated
+        PageFactory.initElements(new HubFieldDecorator(new DefaultElementLocatorFactory(root), injector), this);
         this.root = root;
     }
 

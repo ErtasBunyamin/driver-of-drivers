@@ -49,7 +49,11 @@ public class HubFieldDecorator extends DefaultFieldDecorator {
         }
 
         // Try to instantiate as a Component
-        return decorateComponent(loader, field);
+        if (HubComponent.class.isAssignableFrom(field.getType())) {
+            return decorateComponent(loader, field);
+        }
+
+        return null;
     }
 
     @SuppressWarnings("unchecked")
@@ -107,7 +111,7 @@ public class HubFieldDecorator extends DefaultFieldDecorator {
             }
 
             // Initialize the component with the proxy root
-            ((HubComponent) instance).init(proxy);
+            ((HubComponent) instance).init(proxy, injector);
 
             return instance;
         } catch (NoSuchMethodException e) {

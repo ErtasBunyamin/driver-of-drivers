@@ -1,5 +1,6 @@
 package com.dod.hub.facade;
 
+import com.dod.hub.core.geometry.HubRect;
 import com.dod.hub.core.locator.HubElementRef;
 import com.dod.hub.core.locator.HubLocator;
 import com.dod.hub.core.provider.HubProvider;
@@ -8,6 +9,11 @@ import com.dod.hub.core.provider.SessionCapabilities;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.openqa.selenium.By;
+import org.openqa.selenium.Dimension;
+import org.openqa.selenium.Point;
+import org.openqa.selenium.Rectangle;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Interactive;
 import org.openqa.selenium.interactions.Sequence;
 
@@ -58,6 +64,26 @@ class HubWebDriverActionsTest {
         assertTrue(mockProvider.resetInputStateCalled, "Provider.resetInputState should be called");
     }
 
+    @Test
+    @DisplayName("getRect/getLocation/getSize should delegate to provider.getRect")
+    void geometryDelegatesToProvider() {
+        WebElement element = driver.findElement(By.id("foo"));
+
+        Rectangle rect = element.getRect();
+        assertEquals(10, rect.x);
+        assertEquals(20, rect.y);
+        assertEquals(100, rect.width);
+        assertEquals(200, rect.height);
+
+        Point loc = element.getLocation();
+        assertEquals(10, loc.x);
+        assertEquals(20, loc.y);
+
+        Dimension size = element.getSize();
+        assertEquals(100, size.width);
+        assertEquals(200, size.height);
+    }
+
     // Minimal Mock Provider
     static class MockActionsProvider implements HubProvider {
 
@@ -94,7 +120,8 @@ class HubWebDriverActionsTest {
 
         @Override
         public HubElementRef find(ProviderSession session, HubLocator locator) {
-            return null;
+            // Return a dummy ref so HubWebElement can be created
+            return new HubElementRef(locator, new Object());
         }
 
         @Override
@@ -147,6 +174,11 @@ class HubWebDriverActionsTest {
         @Override
         public boolean isSelected(ProviderSession session, HubElementRef element) {
             return false;
+        }
+
+        @Override
+        public HubRect getRect(ProviderSession session, HubElementRef element) {
+            return new HubRect(10, 20, 100, 200);
         }
 
         @Override

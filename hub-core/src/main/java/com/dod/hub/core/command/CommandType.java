@@ -44,6 +44,7 @@ public enum CommandType {
     IS_DISPLAYED,
     IS_ENABLED,
     IS_SELECTED,
+    GET_RECT,
 
     // Page Actions
     SCREENSHOT,

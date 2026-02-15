@@ -20,6 +20,10 @@
             <artifactId>hub-core</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.ertasbunyamin</groupId>
+            <artifactId>hub-webdriver-facade</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.microsoft.playwright</groupId>
             <artifactId>playwright</artifactId>
         </dependency>

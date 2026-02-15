@@ -16,12 +16,17 @@ public class HubElementRef {
         this.providerHandle = providerHandle;
     }
 
-    public HubLocator getLocator() {
+    public HubLocator locator() {
         return locator;
     }
 
-    public Object getProviderHandle() {
+    public Object handle() {
         return providerHandle;
+    }
+
+    // Legacy getters removed/renamed to avoid JSON recursion
+    public HubLocator getLocator() {
+        return locator;
     }
 
     @Override

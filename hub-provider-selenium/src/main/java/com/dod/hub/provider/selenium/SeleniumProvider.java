@@ -18,6 +18,7 @@ import org.openqa.selenium.interactions.Sequence;
 import org.openqa.selenium.safari.SafariDriver;
 import org.openqa.selenium.safari.SafariOptions;
 import com.dod.hub.core.exception.HubTimeoutException;
+import com.dod.hub.core.geometry.HubRect;
 import com.dod.hub.core.exception.HubException;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import java.net.MalformedURLException;
@@ -142,7 +143,7 @@ public class SeleniumProvider implements HubProvider {
 
     @Override
     public void switchToFrame(ProviderSession session, HubElementRef frameElement) {
-        getDriver(session).switchTo().frame(getElement(frameElement));
+        getDriver(session).switchTo().frame(getWebElement(frameElement));
     }
 
     @Override
@@ -263,8 +264,11 @@ public class SeleniumProvider implements HubProvider {
         }
     }
 
-    private WebElement getElement(HubElementRef ref) {
-        return (WebElement) ref.getProviderHandle();
+    private WebElement getWebElement(HubElementRef ref) {
+        if (ref.handle() instanceof WebElement) {
+            return (WebElement) ref.handle();
+        }
+        throw new HubException("HubElementRef handle is not a WebElement: " + ref.handle().getClass().getName());
     }
 
     private WebDriver getDriver(ProviderSession session) {
@@ -298,7 +302,7 @@ public class SeleniumProvider implements HubProvider {
     @Override
     public HubElementRef find(ProviderSession session, HubElementRef parent, HubLocator locator) {
         try {
-            WebElement parentEl = getElement(parent);
+            WebElement parentEl = getWebElement(parent);
             WebElement el = parentEl.findElement(toBy(locator));
             return new HubElementRef(locator, el);
         } catch (TimeoutException e) {
@@ -312,7 +316,7 @@ public class SeleniumProvider implements HubProvider {
 
     @Override
     public List<HubElementRef> findAll(ProviderSession session, HubElementRef parent, HubLocator locator) {
-        WebElement parentEl = getElement(parent);
+        WebElement parentEl = getWebElement(parent);
         List<WebElement> els = parentEl.findElements(toBy(locator));
         return els.stream()
                 .map(el -> new HubElementRef(locator, el))
@@ -321,42 +325,48 @@ public class SeleniumProvider implements HubProvider {
 
     @Override
     public void click(ProviderSession session, HubElementRef element) {
-        getElement(element).click();
+        getWebElement(element).click();
     }
 
     @Override
     public void type(ProviderSession session, HubElementRef element, String text) {
-        getElement(element).sendKeys(text);
+        getWebElement(element).sendKeys(text);
     }
 
     @Override
     public void clear(ProviderSession session, HubElementRef element) {
-        getElement(element).clear();
+        getWebElement(element).clear();
     }
 
     @Override
     public String getText(ProviderSession session, HubElementRef element) {
-        return getElement(element).getText();
+        return getWebElement(element).getText();
     }
 
     @Override
     public String getAttribute(ProviderSession session, HubElementRef element, String attributeName) {
-        return getElement(element).getAttribute(attributeName);
+        return getWebElement(element).getAttribute(attributeName);
     }
 
     @Override
     public boolean isDisplayed(ProviderSession session, HubElementRef element) {
-        return getElement(element).isDisplayed();
+        return getWebElement(element).isDisplayed();
     }
 
     @Override
     public boolean isEnabled(ProviderSession session, HubElementRef element) {
-        return getElement(element).isEnabled();
+        return getWebElement(element).isEnabled();
     }
 
     @Override
     public boolean isSelected(ProviderSession session, HubElementRef element) {
-        return getElement(element).isSelected();
+        return getWebElement(element).isSelected();
+    }
+
+    @Override
+    public HubRect getRect(ProviderSession session, HubElementRef element) {
+        Rectangle rect = getWebElement(element).getRect();
+        return new HubRect(rect.x, rect.y, rect.width, rect.height);
     }
 
     @Override
@@ -454,13 +464,13 @@ public class SeleniumProvider implements HubProvider {
 
         // Priority 1: Direct cast
         if (value instanceof HubElementRef) {
-            return ((HubElementRef) value).getProviderHandle();
+            return ((HubElementRef) value).handle();
         }
 
-        // Priority 2: Duck Typing (Reflection) - Check for getProviderHandle()
+        // Priority 2: Duck Typing (Reflection) - Check for handle()
         // Handles ClassLoader mismatches or Proxies wrapping HubElementRef
         try {
-            java.lang.reflect.Method method = value.getClass().getMethod("getProviderHandle");
+            java.lang.reflect.Method method = value.getClass().getMethod("handle");
             // We don't restrict return type strictly because that might also be loaded by a
             // different CL
             // But usually it returns Object or WebElement/Locator

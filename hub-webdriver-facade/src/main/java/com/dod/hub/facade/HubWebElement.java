@@ -20,7 +20,7 @@ import java.util.List;
  * operations
  * to a selected {@link HubProvider} via the {@link CommandPipeline}.
  */
-public class HubWebElement implements WebElement, WrapsElement {
+public class HubWebElement implements HubElement, WrapsElement {
 
     private final HubElementRef elementRef;
     private final ProviderSession session;
@@ -36,16 +36,131 @@ public class HubWebElement implements WebElement, WrapsElement {
         this.pipeline = driver.getPipeline();
     }
 
-    public HubElementRef getElementRef() {
+    public HubElementRef getRef() {
         return elementRef;
     }
 
     @Override
     public WebElement getWrappedElement() {
-        if (elementRef != null && elementRef.getProviderHandle() instanceof WebElement) {
-            return (WebElement) elementRef.getProviderHandle();
+        if (elementRef != null && elementRef.handle() instanceof WebElement) {
+            return (WebElement) elementRef.handle();
         }
-        return this;
+        // Return a proxy that intentionally does NOT implement WrapsElement
+        // to stop Selenium's recursive search for the origin element.
+        return new SafeHubWebElement(this);
+    }
+
+    /**
+     * A helper class that delegates all calls to {@link HubWebElement} but
+     * explicitly
+     * DOES NOT implement {@link WrapsElement}.
+     * <p>
+     * This is crucial for non-Selenium providers (like Playwright). Selenium's
+     * {@code Actions} class
+     * recursively calls {@code getWrappedElement()} until it finds an element that
+     * is NOT a wrapper.
+     * Since {@code HubWebElement} implements {@code WrapsElement}, returning
+     * {@code this} causes
+     * an infinite loop. This class acts as the "terminal" element to break that
+     * chain.
+     */
+    private static class SafeHubWebElement implements HubElement {
+        private final HubWebElement delegate;
+
+        SafeHubWebElement(HubWebElement delegate) {
+            this.delegate = delegate;
+        }
+
+        // Required for PlaywrightActionExecutor reflection (if needed)
+        @Override
+        public HubElementRef getRef() {
+            return delegate.getRef();
+        }
+
+        @Override
+        public void click() {
+            delegate.click();
+        }
+
+        @Override
+        public void submit() {
+            delegate.submit();
+        }
+
+        @Override
+        public void sendKeys(CharSequence... keysToSend) {
+            delegate.sendKeys(keysToSend);
+        }
+
+        @Override
+        public void clear() {
+            delegate.clear();
+        }
+
+        @Override
+        public String getTagName() {
+            return delegate.getTagName();
+        }
+
+        @Override
+        public String getAttribute(String name) {
+            return delegate.getAttribute(name);
+        }
+
+        @Override
+        public boolean isSelected() {
+            return delegate.isSelected();
+        }
+
+        @Override
+        public boolean isEnabled() {
+            return delegate.isEnabled();
+        }
+
+        @Override
+        public String getText() {
+            return delegate.getText();
+        }
+
+        @Override
+        public List<WebElement> findElements(By by) {
+            return delegate.findElements(by);
+        }
+
+        @Override
+        public WebElement findElement(By by) {
+            return delegate.findElement(by);
+        }
+
+        @Override
+        public boolean isDisplayed() {
+            return delegate.isDisplayed();
+        }
+
+        @Override
+        public Point getLocation() {
+            return delegate.getLocation();
+        }
+
+        @Override
+        public Dimension getSize() {
+            return delegate.getSize();
+        }
+
+        @Override
+        public Rectangle getRect() {
+            return delegate.getRect();
+        }
+
+        @Override
+        public String getCssValue(String propertyName) {
+            return delegate.getCssValue(propertyName);
+        }
+
+        @Override
+        public <X> X getScreenshotAs(OutputType<X> target) throws WebDriverException {
+            return delegate.getScreenshotAs(target);
+        }
     }
 
     private CommandContext ctx(CommandType type, String target) {
@@ -153,17 +268,17 @@ public class HubWebElement implements WebElement, WrapsElement {
 
     @Override
     public Point getLocation() {
-        return new Point(0, 0);
+        return getRect().getPoint();
     }
 
     @Override
     public Dimension getSize() {
-        return new Dimension(0, 0);
+        return getRect().getDimension();
     }
 
     @Override
     public Rectangle getRect() {
-        return new Rectangle(getLocation(), getSize());
+        return driver.getRect(elementRef);
     }
 
     @Override

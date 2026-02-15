@@ -10,16 +10,17 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.BoundingBox;
 import com.microsoft.playwright.options.Cookie;
-import com.microsoft.playwright.options.MouseButton;
 import com.microsoft.playwright.options.WaitForSelectorState;
 import com.dod.hub.core.exception.HubTimeoutException;
+import com.dod.hub.core.geometry.HubRect;
 
 import java.net.ServerSocket;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.stream.Collectors;
-
-import org.openqa.selenium.interactions.Sequence;
 
 /**
  * Provides an implementation of the {@link HubProvider} using the Microsoft
@@ -27,6 +28,7 @@ import org.openqa.selenium.interactions.Sequence;
  * Supports local and remote execution via browser context management.
  */
 public class PlaywrightProvider implements HubProvider {
+    private static final Logger log = LoggerFactory.getLogger(PlaywrightProvider.class);
 
     // Internal wrapper to hold all Playwright objects
     private static class PlaywrightSessionContext {
@@ -39,10 +41,6 @@ public class PlaywrightProvider implements HubProvider {
         Map<String, Page> handleMap = new HashMap<>();
         String cdpUrl;
         Process chromiumProcess;
-
-        PlaywrightSessionContext(Playwright playwright, Browser browser, BrowserContext context, Page page) {
-            this(playwright, browser, context, page, null);
-        }
 
         PlaywrightSessionContext(Playwright playwright, Browser browser, BrowserContext context, Page page,
                 String cdpUrl) {
@@ -287,7 +285,7 @@ public class PlaywrightProvider implements HubProvider {
         return (PlaywrightSessionContext) session.getRawDriver();
     }
 
-    private Page getPage(ProviderSession session) {
+    Page getPage(ProviderSession session) {
         return getCtx(session).page;
     }
 
@@ -301,10 +299,13 @@ public class PlaywrightProvider implements HubProvider {
     }
 
     private Locator getLocator(HubElementRef ref) {
-        return (Locator) ref.getProviderHandle();
+        if (ref.handle() instanceof Locator) {
+            return (Locator) ref.handle();
+        }
+        return null; // Added to ensure method returns a value in all cases
     }
 
-    private String toSelector(HubLocator locator) {
+    String toSelector(HubLocator locator) {
         // Map HubLocator to Playwright selectors
         switch (locator.getStrategy()) {
             case CSS:
@@ -846,8 +847,7 @@ public class PlaywrightProvider implements HubProvider {
         }
         try {
             Object result = ctx.page.evaluate("() => [window.screenX || 0, window.screenY || 0]");
-            if (result instanceof List) {
-                List list = (List) result;
+            if (result instanceof List<?> list) {
                 if (list.size() >= 2) {
                     return new int[] { toInt(list.get(0)), toInt(list.get(1)) };
                 }
@@ -1000,9 +1000,9 @@ public class PlaywrightProvider implements HubProvider {
             if (!(res instanceof Map)) {
                 return null;
             }
-            Object info = ((Map) res).get("targetInfo");
+            Object info = ((Map<?, ?>) res).get("targetInfo");
             if (info instanceof Map) {
-                Object targetId = ((Map) info).get("targetId");
+                Object targetId = ((Map<?, ?>) info).get("targetId");
                 return targetId == null ? null : targetId.toString();
             }
         } catch (Exception ignored) {
@@ -1016,17 +1016,16 @@ public class PlaywrightProvider implements HubProvider {
             if (!(res instanceof Map)) {
                 return null;
             }
-            Object infos = ((Map) res).get("targetInfos");
+            Object infos = ((Map<?, ?>) res).get("targetInfos");
             if (!(infos instanceof List)) {
                 return null;
             }
             String url = page.url();
             String title = page.title();
-            for (Object obj : (List) infos) {
-                if (!(obj instanceof Map)) {
+            for (Object obj : (List<?>) infos) {
+                if (!(obj instanceof Map<?, ?> info)) {
                     continue;
                 }
-                Map info = (Map) obj;
                 Object type = info.get("type");
                 if (type != null && !"page".equals(type.toString())) {
                     continue;
@@ -1123,217 +1122,39 @@ public class PlaywrightProvider implements HubProvider {
 
     @Override
     public void resetInputState(ProviderSession session) {
-        // Best effort reset
         try {
-            // Release mouse
             getPage(session).mouse().up();
         } catch (Exception ignored) {
         }
+    }
 
-        // We cannot easily release all keys without tracking them,
-        // but passing null/empty might work for some drivers.
-        // Playwright doesn't have a global "release all keys" method on Keyboard.
-        // We rely on specific interactions usually.
+    @Override
+    public HubRect getRect(ProviderSession session, HubElementRef element) {
+        Object handle = element.handle();
+        BoundingBox box = null;
+
+        if (handle instanceof Locator) {
+            try {
+                box = ((Locator) handle).boundingBox();
+            } catch (Exception e) {
+                // ignore
+            }
+        } else if (handle instanceof ElementHandle) {
+            try {
+                box = ((ElementHandle) handle).boundingBox();
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+
+        if (box == null) {
+            return new HubRect(0, 0, 0, 0);
+        }
+        return new HubRect((int) box.x, (int) box.y, (int) box.width, (int) box.height);
     }
 
     @Override
     public void performActions(ProviderSession session, Collection<?> actions) {
-        if (actions == null || actions.isEmpty()) {
-            return;
-        }
-
-        List<Sequence> sequences = new ArrayList<>();
-        for (Object obj : actions) {
-            if (obj instanceof Sequence) {
-                sequences.add((Sequence) obj);
-            }
-        }
-
-        if (sequences.isEmpty()) {
-            return;
-        }
-
-        // Unzip actions into queues
-        List<List<Map<String, Object>>> allQueues = new ArrayList<>();
-        for (Sequence seq : sequences) {
-            allQueues.add((List<Map<String, Object>>) seq.encode().get("actions"));
-        }
-
-        int maxSteps = allQueues.stream().mapToInt(List::size).max().orElse(0);
-        Page page = getPage(session);
-
-        for (int i = 0; i < maxSteps; i++) {
-            long tickDuration = 0;
-            for (int s = 0; s < sequences.size(); s++) {
-                List<Map<String, Object>> queue = allQueues.get(s);
-                if (i < queue.size()) {
-                    Map<String, Object> action = queue.get(i);
-                    String type = (String) sequences.get(s).encode().get("type");
-
-                    performAction(page, type, action);
-
-                    if (action.containsKey("duration")) {
-                        Object d = action.get("duration");
-                        if (d instanceof Number) {
-                            tickDuration = Math.max(tickDuration, ((Number) d).longValue());
-                        }
-                    }
-                }
-            }
-            if (tickDuration > 0) {
-                page.waitForTimeout((double) tickDuration);
-            }
-        }
-    }
-
-    private void performAction(Page page, String inputType, Map<String, Object> action) {
-        String actionType = (String) action.get("type");
-        if ("pause".equals(actionType)) {
-            return;
-        }
-
-        switch (inputType) {
-            case "key":
-                handleKeyAction(page, actionType, action);
-                break;
-            case "pointer":
-                handlePointerAction(page, actionType, action);
-                break;
-            case "wheel":
-                handleWheelAction(page, actionType, action);
-                break;
-        }
-    }
-
-    private void handleKeyAction(Page page, String actionType, Map<String, Object> action) {
-        String rawKey = (String) action.get("value");
-        if (rawKey == null)
-            return;
-
-        // Simple mapping for demonstration. Robust mapping requires a full lookup
-        // table.
-        // Selenium rawKey is often a unicode character.
-        String key = mapKey(rawKey);
-
-        if ("keyDown".equals(actionType)) {
-            page.keyboard().down(key);
-        } else if ("keyUp".equals(actionType)) {
-            page.keyboard().up(key);
-        }
-    }
-
-    // Map Selenium Keys to Playwright Key Names
-    private String mapKey(String s) {
-        // Very basic mapping.
-        // Example: \uE009 -> Shift
-        if (s.length() == 1) {
-            char c = s.charAt(0);
-            if (c >= '\uE000' && c <= '\uF8FF') {
-                // It's a PUA char (Selenium Key)
-                switch (c) {
-                    case '\uE008':
-                        return "Shift";
-                    case '\uE009':
-                        return "Control";
-                    case '\uE00A':
-                        return "Alt";
-                    case '\uE00D':
-                        return "Space";
-                    case '\uE007':
-                        return "Enter";
-                    case '\uE003':
-                        return "Backspace";
-                    case '\uE004':
-                        return "Tab";
-                    case '\uE00C':
-                        return "Escape";
-                    // ... add more as needed
-                    default:
-                        return "Unidentified";
-                }
-            }
-        }
-        return s;
-    }
-
-    private void handlePointerAction(Page page, String actionType, Map<String, Object> action) {
-        if ("pointerMove".equals(actionType)) {
-            Object xObj = action.get("x");
-            Object yObj = action.get("y");
-            Object originObj = action.get("origin");
-            String origin = originObj instanceof String ? (String) originObj : null;
-
-            if (xObj instanceof Number && yObj instanceof Number) {
-                double x = ((Number) xObj).doubleValue();
-                double y = ((Number) yObj).doubleValue();
-
-                if ("pointer".equals(origin)) {
-                    // Relative to current pointer ?? Playwright mouse.move is absolute or steps.
-                    // We assume absolute if unspecified, but Selenium "pointer" means relative to
-                    // current.
-                    // Playwright doesn't easily support "move relative to current" without querying
-                    // current.
-                    // We'll treat as absolute for now or warn.
-                } else if ("viewport".equals(origin)) {
-                    page.mouse().move(x, y);
-                } else if (originObj != null && !"viewport".equals(origin) && !"pointer".equals(origin)) {
-                    // Element origin (originObj is likely a WebElement or Map)
-                    // Warning: We cannot resolve element ID here easily without HubElementRef.
-                    // System.err.println("Element origin not supported in PlaywrightProvider
-                    // performActions");
-                }
-            }
-        } else if ("pointerDown".equals(actionType)) {
-            int button = 0; // Left
-            Object b = action.get("button");
-            if (b instanceof Number) {
-                int code = ((Number) b).intValue();
-                // Selenium: 0:Left, 1:Middle, 2:Right
-                // Playwright: 'left', 'middle', 'right'
-                MouseButton mb = MouseButton.LEFT;
-                if (code == 1)
-                    mb = MouseButton.MIDDLE;
-                if (code == 2)
-                    mb = MouseButton.RIGHT;
-
-                page.mouse().down(new Mouse.DownOptions().setButton(mb));
-            } else {
-                page.mouse().down();
-            }
-        } else if ("pointerUp".equals(actionType)) {
-            int button = 0;
-            Object b = action.get("button");
-            if (b instanceof Number) {
-                int code = ((Number) b).intValue();
-                MouseButton mb = MouseButton.LEFT;
-                if (code == 1)
-                    mb = MouseButton.MIDDLE;
-                if (code == 2)
-                    mb = MouseButton.RIGHT;
-
-                page.mouse().up(new Mouse.UpOptions().setButton(mb));
-            } else {
-                page.mouse().up();
-            }
-        }
-    }
-
-    private void handleWheelAction(Page page, String actionType, Map<String, Object> action) {
-        if ("scroll".equals(actionType)) {
-            // Selenium defines deltaX, deltaY
-            // Playwright mouse.wheel(deltaX, deltaY)
-            Object dx = action.get("x");
-            Object dy = action.get("y");
-            // Also deltaX/Y which matches standard? Sequence uses 'x', 'y' for scroll?
-            // Checking Selenium WheelInput.ScrollModel... it produces 'duration', 'origin',
-            // 'x', 'y', 'deltaX', 'deltaY'.
-
-            Object deltaX = action.get("deltaX");
-            Object deltaY = action.get("deltaY");
-
-            if (deltaX instanceof Number && deltaY instanceof Number) {
-                page.mouse().wheel(((Number) deltaX).doubleValue(), ((Number) deltaY).doubleValue());
-            }
-        }
+        new PlaywrightActionExecutor(this).performActions(session, actions);
     }
 }

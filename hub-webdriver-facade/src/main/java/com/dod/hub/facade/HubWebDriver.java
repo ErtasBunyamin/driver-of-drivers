@@ -2,6 +2,7 @@ package com.dod.hub.facade;
 
 import com.dod.hub.core.command.CommandType;
 import com.dod.hub.core.command.HubCommand;
+import com.dod.hub.core.geometry.HubRect;
 import com.dod.hub.core.locator.HubElementRef;
 import com.dod.hub.core.locator.HubLocator;
 import com.dod.hub.core.pipeline.CommandContext;
@@ -21,13 +22,7 @@ import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Files;
 import java.time.Duration;
-import java.util.Base64;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import java.util.stream.Collectors;
 
@@ -39,7 +34,7 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
     // ==================== Interactive ====================
 
     @Override
-    public void perform(java.util.Collection<Sequence> actions) {
+    public void perform(Collection<Sequence> actions) {
         CommandContext context = ctx(CommandType.PERFORM_ACTIONS, HubCommand.TARGET_BROWSER);
         // We pass the raw actions collection. The provider implementation handles the
         // casting/adaptation.
@@ -181,6 +176,14 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
         });
     }
 
+    public Rectangle getRect(HubElementRef ref) {
+        CommandContext context = ctx(CommandType.GET_RECT, ref.getLocator().toString());
+        return pipeline.execute(context, () -> {
+            HubRect r = provider.getRect(getSession(), ref);
+            return new Rectangle(new Point(r.x, r.y), new Dimension(r.width, r.height));
+        });
+    }
+
     @Override
     public String getPageSource() {
         CommandContext context = ctx(CommandType.PAGE_SOURCE, HubCommand.TARGET_BROWSER);
@@ -250,7 +253,7 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
                 if (!(frameElement instanceof HubWebElement)) {
                     throw new IllegalArgumentException("Element must be a HubWebElement");
                 }
-                HubElementRef ref = ((HubWebElement) frameElement).getElementRef();
+                HubElementRef ref = ((HubWebElement) frameElement).getRef();
                 CommandContext context = ctx(CommandType.SWITCH_TO_FRAME, ref.getLocator().toString());
                 pipeline.execute(context, () -> {
                     provider.switchToFrame(getSession(), ref);
@@ -630,17 +633,27 @@ public class HubWebDriver implements WebDriver, TakesScreenshot, JavascriptExecu
 
         // Priority 1: Direct cast (fastest)
         if (arg instanceof HubWebElement) {
-            return ((HubWebElement) arg).getElementRef();
+            return ((HubWebElement) arg).getRef();
         }
 
-        // Priority 2: Duck Typing (Reflection) - Check for getElementRef()
+        // Priority 2: Duck Typing (Reflection) - Check for handle() or
+        // getProviderHandle() (legacy)
         // This handles JDK Proxies (Spring CGLIB, etc.) where instanceof fails or class
         // name differs
         try {
-            java.lang.reflect.Method method = arg.getClass().getMethod("getElementRef");
-            if (HubElementRef.class.isAssignableFrom(method.getReturnType())) {
-                return method.invoke(arg);
+            // Try new handle() method first
+            try {
+                java.lang.reflect.Method method = arg.getClass().getMethod("handle");
+                Object result = method.invoke(arg);
+                if (result != null)
+                    return result;
+            } catch (Exception e) {
+                // Ignore
             }
+
+            // check for legacy getProviderHandle (unlikely now but good for safety)
+            java.lang.reflect.Method method = arg.getClass().getMethod("getProviderHandle");
+            return method.invoke(arg);
         } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
             // Not a HubWebElement-like object, proceed
         }

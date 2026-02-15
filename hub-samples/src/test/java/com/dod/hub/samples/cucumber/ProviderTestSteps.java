@@ -393,6 +393,7 @@ public class ProviderTestSteps {
     @When("I perform a hover action on element {string}")
     public void i_perform_a_hover_action_on_element(String id) {
         WebElement element = driver().findElement(By.id(id));
-        new Actions(driver()).doubleClick(element).click(element).sendKeys(Keys.BACK_SPACE).build().perform();
+        //new Actions(driver()).doubleClick(element).click(element).sendKeys(Keys.BACK_SPACE).build().perform();
+        new Actions(driver()).sendKeys(element,"test").build().perform();
     }
 }

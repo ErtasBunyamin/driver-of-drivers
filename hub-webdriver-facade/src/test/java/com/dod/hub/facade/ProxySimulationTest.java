@@ -122,7 +122,7 @@ class ProxySimulationTest {
     @Test
     void executeScript_shouldUnwrapViaDuckTyping() {
         Object duckTypedElement = new Object() {
-            public HubElementRef getElementRef() {
+            public HubElementRef handle() {
                 return elementRef;
             }
         };

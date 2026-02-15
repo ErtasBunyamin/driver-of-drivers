@@ -302,7 +302,7 @@ public class HybridProvider implements HubProvider {
 
     @Override
     public HubElementRef find(ProviderSession session, HubElementRef parent, HubLocator locator) {
-        WebElement parentEl = (WebElement) parent.getProviderHandle();
+        WebElement parentEl = (WebElement) parent.handle();
         try {
             WebElement el = parentEl.findElement(toSeleniumBy(locator));
             return new HubElementRef(locator, el);
@@ -315,7 +315,7 @@ public class HybridProvider implements HubProvider {
 
     @Override
     public List<HubElementRef> findAll(ProviderSession session, HubElementRef parent, HubLocator locator) {
-        WebElement parentEl = (WebElement) parent.getProviderHandle();
+        WebElement parentEl = (WebElement) parent.handle();
         List<WebElement> els = parentEl.findElements(toSeleniumBy(locator));
         return els.stream()
                 .map(el -> new HubElementRef(locator, el))
@@ -324,42 +324,42 @@ public class HybridProvider implements HubProvider {
 
     @Override
     public void click(ProviderSession session, HubElementRef element) {
-        executeSelenium((HybridSession) session, () -> ((WebElement) element.getProviderHandle()).click());
+        executeSelenium((HybridSession) session, () -> ((WebElement) element.handle()).click());
     }
 
     @Override
     public void type(ProviderSession session, HubElementRef element, String text) {
-        executeSelenium((HybridSession) session, () -> ((WebElement) element.getProviderHandle()).sendKeys(text));
+        executeSelenium((HybridSession) session, () -> ((WebElement) element.handle()).sendKeys(text));
     }
 
     @Override
     public void clear(ProviderSession session, HubElementRef element) {
-        executeSelenium((HybridSession) session, () -> ((WebElement) element.getProviderHandle()).clear());
+        executeSelenium((HybridSession) session, () -> ((WebElement) element.handle()).clear());
     }
 
     @Override
     public String getText(ProviderSession session, HubElementRef element) {
-        return ((WebElement) element.getProviderHandle()).getText();
+        return ((WebElement) element.handle()).getText();
     }
 
     @Override
     public String getAttribute(ProviderSession session, HubElementRef element, String attributeName) {
-        return ((WebElement) element.getProviderHandle()).getAttribute(attributeName);
+        return ((WebElement) element.handle()).getAttribute(attributeName);
     }
 
     @Override
     public boolean isDisplayed(ProviderSession session, HubElementRef element) {
-        return ((WebElement) element.getProviderHandle()).isDisplayed();
+        return ((WebElement) element.handle()).isDisplayed();
     }
 
     @Override
     public boolean isEnabled(ProviderSession session, HubElementRef element) {
-        return ((WebElement) element.getProviderHandle()).isEnabled();
+        return ((WebElement) element.handle()).isEnabled();
     }
 
     @Override
     public boolean isSelected(ProviderSession session, HubElementRef element) {
-        return ((WebElement) element.getProviderHandle()).isSelected();
+        return ((WebElement) element.handle()).isSelected();
     }
 
     @Override
@@ -496,10 +496,10 @@ public class HybridProvider implements HubProvider {
     @Override
     public void switchToFrame(ProviderSession session, HubElementRef frameElement) {
         HybridSession hybrid = (HybridSession) session;
-        WebElement webElement = (WebElement) frameElement.getProviderHandle();
-
-        // 1. Switch Selenium
-        hybrid.getSeleniumDriver().switchTo().frame(webElement);
+        WebElement webElement = (WebElement) frameElement.handle();
+        executeSelenium(hybrid, () -> {
+            hybrid.getSeleniumDriver().switchTo().frame(webElement);
+        });
 
         // 2. Switch Playwright
         // We need to re-locate this element in Playwright to get the frame.
@@ -642,7 +642,7 @@ public class HybridProvider implements HubProvider {
             return null;
         }
         if (value instanceof HubElementRef) {
-            return ((HubElementRef) value).getProviderHandle();
+            return ((HubElementRef) value).handle();
         }
         if (value instanceof List) {
             return ((List<?>) value).stream()

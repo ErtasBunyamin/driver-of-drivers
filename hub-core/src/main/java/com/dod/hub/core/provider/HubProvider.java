@@ -1,5 +1,6 @@
 package com.dod.hub.core.provider;
 
+import com.dod.hub.core.geometry.HubRect;
 import com.dod.hub.core.locator.HubElementRef;
 import com.dod.hub.core.locator.HubLocator;
 
@@ -233,6 +234,17 @@ public interface HubProvider {
      * @return true if selected, false otherwise.
      */
     boolean isSelected(ProviderSession session, HubElementRef element);
+
+    /**
+     * Retrieves the location and size of the rendered element.
+     *
+     * @param session The active provider session.
+     * @param element The reference to the element.
+     * @return The rectangle containing the element's location and size.
+     */
+    default HubRect getRect(ProviderSession session, HubElementRef element) {
+        throw new UnsupportedOperationException("getRect is not supported by this provider.");
+    }
 
     /**
      * Navigates the browser to the specified URL.

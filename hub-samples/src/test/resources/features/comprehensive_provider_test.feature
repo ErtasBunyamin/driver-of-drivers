@@ -79,7 +79,8 @@ Feature: Comprehensive Provider Test (Page Object Model)
     And item 0 should have text "Playwright Item"
     When I type "overwrite test" into the item input
     Then the item input value should be "overwrite test"
-    When I clear the item input
+    When I perform a hover action on element "item-input"
+
     Then the item input value should be ""
     Then the disabled input should not be enabled
     And the item input should be enabled
@@ -123,7 +124,7 @@ Feature: Comprehensive Provider Test (Page Object Model)
     And item 0 should have text "Hybrid Item"
     When I type "overwrite test" into the item input
     Then the item input value should be "overwrite test"
-    When I clear the item input
+    When I perform a hover action on element "item-input"
     Then the item input value should be ""
     Then the disabled input should not be enabled
     And the item input should be enabled
